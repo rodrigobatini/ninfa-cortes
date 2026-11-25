@@ -5,10 +5,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $portable = (Resolve-Path -LiteralPath $PortableDir).Path
 if (-not (Test-Path -LiteralPath (Join-Path $portable 'runtime/python/pythonw.exe'))) {
-    throw 'Informe a pasta extraída do Ninfa Cortes.'
+    throw 'Pass the path to an extracted Ninfa Cortes release.'
 }
 $lock = [Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
-if ($lock | Where-Object Port -eq 8771) { throw 'Encerre o Ninfa Cortes antes de atualizar.' }
+if ($lock | Where-Object Port -eq 8771) { throw 'Close Ninfa Cortes before rebuilding the desktop app.' }
 
 $version = '1.0.4370.26'
 $cache = Join-Path $PSScriptRoot ".build/webview2-$version"
@@ -29,7 +29,7 @@ $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     "/win32icon:$source\Ninfa.ico" "/out:$exe" /reference:System.Windows.Forms.dll `
     /reference:System.Drawing.dll "/reference:$core" "/reference:$forms" `
     "$source\DesktopWindow.cs" "$source\PortableLauncher.cs"
-if ($LASTEXITCODE -ne 0) { throw 'A compilação da janela falhou.' }
+if ($LASTEXITCODE -ne 0) { throw 'The desktop build failed.' }
 
 Copy-Item -LiteralPath $exe,$core,$forms,(Join-Path $cache 'runtimes/win-x64/native/WebView2Loader.dll') -Destination $portable -Force
 Copy-Item -LiteralPath (Join-Path $cache 'LICENSE.txt') -Destination (Join-Path $portable 'WebView2-LICENSE.txt') -Force
