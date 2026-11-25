@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f0e8">
+  <title>Ninfa Cortes</title>
+  <link rel="icon" href="/brand/ninfa.png">
+  <link rel="preload" href="/brand/lilita.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="/studio.css?v=0.0.1">
+  <script src="/studio.js" defer></script>
+</head>
+<body>
+  <header class="bar">
+    <div class="brand"><strong>Ninfa <span>Cortes</span></strong></div>
+    <form id="new-job" class="new-job">
+      <label for="source-url" class="sr-only">Link do vídeo no YouTube</label>
+      <input type="url" id="source-url" placeholder="Cole o link do YouTube" required>
+      <label for="count" class="sr-only">Quantidade de cortes</label>
+      <select id="count" title="Quantidade máxima de cortes">
+        <option value="1">1 corte</option>
+        <option value="3" selected>3 cortes</option>
+        <option value="5">5 cortes</option>
+        <option value="10">10 cortes</option>
+        <option value="15">15 cortes</option>
+        <option value="20">20 cortes</option>
+        <option value="25">25 cortes</option>
+        <option value="30">30 cortes</option>
+      </select>
+      <button class="primary" type="submit">Gerar cortes</button>
+    </form>
+    <button class="secondary" id="shutdown" type="button">Encerrar</button>
+  </header>
+  <div id="notice" class="notice" role="status" hidden></div>
+  <main class="studio">
+    <aside class="library" aria-label="Biblioteca de cortes">
+      <div class="library-head">
+        <label class="eyebrow" for="projects">Vídeo de origem</label>
+        <select id="projects" aria-label="Vídeo de origem"></select>
+        <div id="job-progress" hidden><progress id="progress" max="100" value="0"></progress><p id="job-message"></p></div>
+        <div class="list-head"><h2>Cortes</h2><span id="clip-count"></span></div>
+      </div>
+      <div class="clip-list" id="clip-list"></div>
+    </aside>
+    <section class="viewer" aria-label="Prévia do corte">
+      <div class="viewer-head"><div class="eyebrow">Prévia vertical</div><h1 id="clip-title">Selecione um corte</h1></div>
+      <div class="stage">
+        <div class="phone" id="phone">
+          <video id="video" preload="metadata" playsinline aria-label="Prévia do clipe"></video>
+          <img id="camera-preview" class="camera-preview" alt="Prévia do enquadramento da câmera" hidden>
+          <div id="hook-preview" class="hook-preview" hidden></div>
+          <div id="caption-preview" class="caption-preview" role="button" tabindex="0" aria-label="Legenda na prévia. Arraste ou use as setas para mudar a posição."></div>
+          <button type="button" id="play-screen" class="play-screen" hidden aria-label="Reproduzir">▶</button>
+          <div id="video-status" class="video-status" role="status">Escolha um corte para revisar.</div>
+        </div>
+      </div>
+      <div class="controls" id="controls" hidden>
+        <button class="play-button" id="play" type="button" aria-label="Reproduzir">▶</button>
+        <span id="current">0:00</span>
+        <label class="sr-only" for="timeline">Posição no vídeo</label><input id="timeline" type="range" min="0" max="1" step="0.01" value="0">
+        <span id="duration">0:00</span>
+      </div>
+      <div class="viewer-footer"><span>1080 × 1920</span><span id="viewer-hint">Arraste a legenda na prévia</span></div>
+    </section>
+    <section class="inspector" aria-label="Ajustes do clipe">
+      <div class="inspector-head"><div><div class="eyebrow">Ajustes do clipe</div><h2>Personalizar</h2></div><span id="save-state" aria-live="polite"></span></div>
+      <div class="tabs" id="edit-tabs" aria-label="Tipo de ajuste" hidden>
+        <button id="tab-captions" type="button" aria-controls="inspector-content" aria-pressed="true">Legendas</button>
+        <button id="tab-camera" type="button" aria-controls="camera-panel" aria-pressed="false">Câmera</button>
+      </div>
+      <div class="inspector-editor">
+      <div id="inspector-content" hidden>
+        <label class="field" for="hook">Hook de abertura</label>
+        <input id="hook" maxlength="80" placeholder="Texto de abertura">
+        <div class="settings">
+          <div><label class="field" for="style">Destaque</label><select id="style"><option value="palavra">Palavra por palavra</option><option value="frase">Frase simples</option></select></div>
+          <div><span class="field">Posição</span><button type="button" class="secondary reset" id="reset-position">Restaurar</button></div>
+        </div>
+        <div class="sliders"><label for="x">Horizontal <output id="x-value"></output></label><input id="x" type="range" min="12" max="88" step="0.1"><label for="y">Vertical <output id="y-value"></output></label><input id="y" type="range" min="12" max="92" step="0.1"></div>
+        <div class="cue-head"><h3>Texto da legenda</h3><span id="cue-count"></span></div>
+        <div class="cue-list" id="cue-list"></div>
+      </div>
+      <div id="camera-panel" hidden>
+        <h3>Enquadramento da facecam</h3>
+        <p id="camera-unavailable" class="camera-note" hidden>Este corte não tem uma facecam separada para ajustar.</p>
+        <div id="camera-controls" hidden>
+          <p class="camera-note">Suba ou desça o rosto no quadro. O gameplay mantém o mesmo recorte.</p>
+          <div class="camera-field"><label for="camera-vertical">Altura do rosto</label><output id="camera-vertical-value"></output></div>
+          <input id="camera-vertical" type="range" min="-100" max="100" step="1" value="0">
+          <div class="range-ends"><span>Mais abaixo</span><span>Mais acima</span></div>
+          <div class="camera-field"><label for="camera-horizontal">Posição horizontal</label><output id="camera-horizontal-value"></output></div>
+          <input id="camera-horizontal" type="range" min="-100" max="100" step="1" value="0">
+          <div class="range-ends"><span>Esquerda</span><span>Direita</span></div>
+          <div class="camera-field"><label for="camera-zoom">Zoom</label><output id="camera-zoom-value"></output></div>
+          <input id="camera-zoom" type="range" min="100" max="150" step="1" value="100">
+          <div class="camera-actions"><button type="button" id="reset-camera" class="secondary">Restaurar</button><button type="button" id="refresh-camera" class="secondary" disabled>Atualizar prévia</button></div>
+          <button type="button" id="apply-camera" class="secondary camera-batch">Aplicar aos outros cortes</button>
+          <p id="camera-status" class="camera-note" aria-live="polite"></p>
+        </div>
+      </div>
+      </div>
+      <div class="export-row"><a id="download" class="secondary button-link" hidden>Baixar MP4</a><button class="primary" type="button" id="export" disabled>Exportar MP4</button></div>
+    </section>
+  </main>
+  <div id="studio-stopped" hidden>
+    <h1>Estúdio encerrado</h1>
+    <p>Para abrir de novo, dê dois cliques em <strong>Ninfa Cortes</strong>.</p>
+  </div>
+</body>
+</html>

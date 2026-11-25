@@ -1,0 +1,7 @@
+.build/
+__pycache__/
+*.py[cod]
+*.log
+*.zip
+/dados/
+/runtime/
