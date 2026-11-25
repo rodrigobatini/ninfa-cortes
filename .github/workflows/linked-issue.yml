@@ -1,0 +1,56 @@
+name: Contribution checks
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  issues: read
+
+concurrency:
+  group: linked-issue-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  linked-issue:
+    name: Linked issue
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm a local issue is referenced
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+
+          with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as event:
+              body = json.load(event)["pull_request"]["body"] or ""
+          issue_numbers = dict.fromkeys(re.findall(
+              r"(?im)^\s*(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\s*:?\s*#([1-9][0-9]*)\b",
+              body,
+          ))
+          for number in issue_numbers:
+              url = f"{os.environ['GITHUB_API_URL']}/repos/{os.environ['GITHUB_REPOSITORY']}/issues/{number}"
+              request = Request(url, headers={
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "Accept": "application/vnd.github+json",
+                  "User-Agent": "ninfa-linked-issue",
+              })
+              try:
+                  with urlopen(request, timeout=15) as response:
+                      issue = json.load(response)
+              except HTTPError as error:
+                  if error.code in (404, 410):
+                      continue
+                  raise
+              if "pull_request" not in issue:
+                  print(f"Found issue #{number}.")
+                  break
+          else:
+              raise SystemExit("Link an issue in this repository on its own line, for example: Closes #123")
+          PY

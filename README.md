@@ -1,22 +1,52 @@
 # Ninfa Cortes
 
-Estúdio portátil para Windows que transforma vídeos do YouTube em cortes verticais com legendas editáveis em português.
+Ninfa Cortes is an open-source portable Windows app for turning YouTube videos into vertical clips. It selects candidate moments and keeps you in control of the final cut.
 
-## Como usar
+## Download and use
 
-1. Baixe o ZIP para Windows x64 em [Releases](https://github.com/rodrigobatini/ninfa-cortes/releases) e extraia a pasta inteira.
-2. Abra **Ninfa Cortes.exe**. O editor abre em uma janela do Windows e usa o Microsoft Edge WebView2 Runtime do sistema.
-3. Cole a URL de um vídeo que você pode usar e escolha até 30 cortes candidatos. A geração baixa o vídeo, transcreve o áudio e seleciona os trechos para revisão.
-4. Revise o hook e as legendas, ajuste a posição na prévia e enquadre a facecam quando ela for detectada separadamente. Clique em **Exportar MP4**, depois em **Baixar MP4** para escolher onde salvar o arquivo 1080 × 1920.
+1. Download the full **Windows x64 ZIP** from [GitHub Releases](https://github.com/rodrigobatini/ninfa-cortes/releases) and extract the entire folder.
+2. Double-click **Ninfa Cortes.exe**. The desktop window uses the Microsoft Edge WebView2 Runtime.
+3. Paste a YouTube link for a video you have permission to use and choose up to 30 candidate clips. The app downloads the video, transcribes it in Portuguese, and selects segments for review.
+4. Edit the opening hook and caption text, drag the captions into position, and adjust the facecam framing if the app detected a separate camera.
+5. Select **Exportar MP4**, then **Baixar MP4** to save a 1080 × 1920 video.
 
-A transcrição e a renderização rodam no computador. É preciso Internet para buscar vídeos no YouTube. A transcrição usa CUDA quando disponível e CPU nos demais casos. A biblioteca e os rascunhos ficam em `%LOCALAPPDATA%\BatiniClipes`. Para manter os dados junto do executável, crie uma pasta `dados` ao lado dele antes de abrir. O botão **Encerrar** e o **X** da janela salvam a edição pendente e fecham o motor quando o processamento termina.
+Transcription and rendering run locally. You need an internet connection to retrieve YouTube videos. Transcription uses CUDA on a compatible NVIDIA setup and defaults to CPU when CUDA is unavailable. The current desktop interface and transcription workflow are in Brazilian Portuguese.
 
-## Código
+The app stores clips and drafts in `%LOCALAPPDATA%\BatiniClipes`. To keep them with the executable, create a `dados` folder beside it before launching. **Encerrar** and the window’s **X** save pending edits and shut down the local server when processing is complete.
 
-- `app/` contém o editor, a API FastAPI e a renderização.
-- `windows/` contém a janela WinForms, o lançador e o ícone.
-- `engine/` contém os scripts e os recursos usados do [AI Stream Clipper](https://github.com/arcticloud/ai-stream-clipper), com os avisos originais.
+## Develop
 
-Para recompilar a janela e substituir o código do editor em uma cópia extraída da versão portátil, execute `powershell -ExecutionPolicy Bypass -File .\Build.ps1 -PortableDir "C:\caminho\Ninfa Cortes"`. O script usa o compilador do .NET Framework presente no Windows e baixa o SDK WebView2 do NuGet. Feche o aplicativo antes de executar.
+- `app/` contains the editor, FastAPI backend, and rendering code.
+- `windows/` contains the WinForms window, launcher, and icon.
+- `engine/` contains the bundled [AI Stream Clipper](https://github.com/arcticloud/ai-stream-clipper) sources and assets.
 
-Os componentes de terceiros têm licenças próprias. Consulte [Avisos de terceiros](THIRD-PARTY.md).
+On Windows x64, extract a full release ZIP and close the app. Run the following command from the repository root to rebuild the desktop executable and update the editor in that copy:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Build.ps1 -PortableDir "C:\path\to\Ninfa Cortes"
+```
+
+The build uses the Windows .NET Framework compiler and downloads the pinned WebView2 SDK from NuGet. The extracted release supplies the Python runtime, FFmpeg, model weights, and other runtime dependencies.
+
+### Run the editor from source
+
+Install Python 3.12 x64 and add Node.js, FFmpeg, and FFprobe to your `PATH`. Use an FFmpeg build with `libass` and an H.264 encoder such as `libx264`.
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+$env:BATINI_CLIP_DATA = Join-Path $PWD 'dados'
+$env:BATINI_CLIP_ENGINE = Join-Path $PWD 'engine'
+New-Item -ItemType Directory -Force $env:BATINI_CLIP_DATA | Out-Null
+.\.venv\Scripts\python.exe .\app\launch.py --port 8772
+```
+
+Open [http://127.0.0.1:8772](http://127.0.0.1:8772). This setup uses CPU by default and fetches the Whisper small model the first time it needs it. To use an existing local model, set `BATINI_CLIP_MODEL` to its directory before starting the editor.
+
+## Contribute
+
+Start with an [issue](https://github.com/rodrigobatini/ninfa-cortes/issues), then submit a pull request from your fork. See the [contribution guide](CONTRIBUTING.md) for the review and testing steps.
+
+## License
+
+The original Ninfa Cortes source and documentation are available under the [MIT License](LICENSE). Bundled third-party software, fonts, and model weights retain their own licenses. See [Third-party notices](THIRD-PARTY.md).
