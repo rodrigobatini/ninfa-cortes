@@ -7,8 +7,8 @@
   <title>Ninfa Cortes</title>
   <link rel="icon" href="/brand/ninfa.png">
   <link rel="preload" href="/brand/lilita.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="/studio.css?v=camera-pan">
-  <script src="/studio.js?v=camera-pan" defer></script>
+  <link rel="stylesheet" href="/studio.css?v=caption-batch">
+  <script src="/studio.js?v=caption-batch" defer></script>
 </head>
 <body>
   <header class="bar">
@@ -84,6 +84,8 @@
           <div><span class="field">Posição</span><button type="button" class="secondary reset" id="reset-position">Restaurar</button></div>
         </div>
         <div class="sliders"><label for="x">Horizontal <output id="x-value"></output></label><input id="x" type="range" min="12" max="88" step="0.1"><label for="y">Vertical <output id="y-value"></output></label><input id="y" type="range" min="12" max="92" step="0.1"></div>
+        <button type="button" id="apply-caption-position" class="secondary caption-batch">Aplicar posição aos outros cortes</button>
+        <p id="caption-position-status" class="camera-note" role="status" hidden></p>
         <div class="cue-head"><h3>Texto da legenda</h3><span id="cue-count"></span></div>
         <div class="cue-list" id="cue-list"></div>
       </div>

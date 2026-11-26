@@ -69,6 +69,7 @@ body {
 .camera-preview:active { cursor: grabbing; }
 .camera-fine { margin-top: 14px; font-size: .85rem; }
 .camera-fine summary { cursor: pointer; }
+.caption-batch { margin-bottom: 12px; font-size: .82rem; white-space: normal; }
 @media (max-width: 950px) {
   .new-job { flex-wrap: wrap; }
   .new-job input { flex-basis: 7rem; }

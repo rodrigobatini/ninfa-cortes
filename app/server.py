@@ -521,22 +521,31 @@ def social_card(key: str):
     return FileResponse(file, media_type="image/png", headers={"Cache-Control": "private, max-age=31536000, immutable"})
 
 
-@app.post("/api/clips/{key}/card-batch")
-def apply_card_to_batch(key: str):
+def copy_draft_fields(key, fields, required=None):
     with CLIP_LOCK, closing(connect()) as db, db:
         source = get("clip", key)
-        card = source["draft"].get("card")
-        if not card:
+        updates = {field: source["draft"].get(field) for field in fields}
+        if required and not updates[required]:
             raise HTTPException(400, "Adicione um card primeiro.")
         changes = []
         for clip in records("clip"):
             if (clip["job"] == source["job"] and clip["id"] != key and not clip.get("removed")
-                    and clip["draft"].get("card") != card):
-                clip["draft"]["card"] = card
+                    and any(clip["draft"].get(field) != value for field, value in updates.items())):
+                clip["draft"].update(updates)
                 clip["draft"]["revision"] += 1
                 changes.append((json.dumps(clip, ensure_ascii=False), clip["id"]))
         db.executemany("UPDATE records SET payload=? WHERE kind='clip' AND id=?", changes)
     return {"updated": len(changes)}
+
+
+@app.post("/api/clips/{key}/card-batch")
+def apply_card_to_batch(key: str):
+    return copy_draft_fields(key, ("card",), required="card")
+
+
+@app.post("/api/clips/{key}/caption-position-batch")
+def apply_caption_position_to_batch(key: str):
+    return copy_draft_fields(key, ("x", "y"))
 
 
 @app.put("/api/clips/{key}/card-default")

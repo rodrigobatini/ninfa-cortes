@@ -178,6 +178,7 @@ async function selectClip(key) {
   for (const [name, value] of Object.entries({ ...cameraDefaults, ...item.draft.camera })) $("camera-" + name).value = value;
   $("camera-status").textContent = "";
   $("card-status").textContent = "";
+  $("caption-position-status").hidden = true;
   if (item.draft.card) {
     for (const key of ["x", "y", "size"]) $("card-" + key).value = item.draft.card[key];
   }
@@ -609,6 +610,22 @@ $("reset-position").onclick = () => {
   $("y").value = 65.9;
   setPosition();
   markDirty();
+};
+$("apply-caption-position").onclick = async (event) => {
+  if (!clip) return;
+  const { id } = clip;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await flush();
+    const { updated } = await api(`clips/${id}/caption-position-batch`, "POST");
+    if (clip?.id !== id) return;
+    const status = $("caption-position-status");
+    status.textContent = updated ? `Posição aplicada a ${updated} ${updated === 1 ? "corte" : "cortes"} deste vídeo.` :
+      "Todos os cortes deste vídeo já usam esta posição.";
+    status.hidden = false;
+  } catch (error) { message(error.message); }
+  finally { button.disabled = false; }
 };
 let pointer = null;
 caption.onpointerdown = (event) => {
