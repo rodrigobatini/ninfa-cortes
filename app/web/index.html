@@ -7,8 +7,8 @@
   <title>Ninfa Cortes</title>
   <link rel="icon" href="/brand/ninfa.png">
   <link rel="preload" href="/brand/lilita.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="/studio.css?v=0.0.1">
-  <script src="/studio.js" defer></script>
+  <link rel="stylesheet" href="/studio.css?v=local-card">
+  <script src="/studio.js?v=local-card" defer></script>
 </head>
 <body>
   <header class="bar">
@@ -16,6 +16,8 @@
     <form id="new-job" class="new-job">
       <label for="source-url" class="sr-only">Link do vídeo no YouTube</label>
       <input type="url" id="source-url" placeholder="Cole o link do YouTube" required>
+      <button class="secondary source-picker" id="pick-local" type="button" hidden>Arquivo local</button>
+      <button class="secondary source-picker" id="clear-local" type="button" hidden>Usar link</button>
       <label for="count" class="sr-only">Quantidade de cortes</label>
       <select id="count" title="Quantidade máxima de cortes">
         <option value="1">1 corte</option>
@@ -36,7 +38,10 @@
     <aside class="library" aria-label="Biblioteca de cortes">
       <div class="library-head">
         <label class="eyebrow" for="projects">Vídeo de origem</label>
-        <select id="projects" aria-label="Vídeo de origem"></select>
+        <div class="project-select">
+          <select id="projects" aria-label="Vídeo de origem"></select>
+          <button id="remove-project" class="icon-remove secondary" type="button" aria-label="Remover vídeo selecionado" title="Remover vídeo da biblioteca" hidden>×</button>
+        </div>
         <div id="job-progress" hidden><progress id="progress" max="100" value="0"></progress><p id="job-message"></p></div>
         <div class="list-head"><h2>Cortes</h2><span id="clip-count"></span></div>
       </div>
@@ -50,6 +55,7 @@
           <img id="camera-preview" class="camera-preview" alt="Prévia do enquadramento da câmera" hidden>
           <div id="hook-preview" class="hook-preview" hidden></div>
           <div id="caption-preview" class="caption-preview" role="button" tabindex="0" aria-label="Legenda na prévia. Arraste ou use as setas para mudar a posição."></div>
+          <img id="card-preview" class="card-preview" alt="Card social na prévia" draggable="false" hidden>
           <button type="button" id="play-screen" class="play-screen" hidden aria-label="Reproduzir">▶</button>
           <div id="video-status" class="video-status" role="status">Escolha um corte para revisar.</div>
         </div>
@@ -67,6 +73,7 @@
       <div class="tabs" id="edit-tabs" aria-label="Tipo de ajuste" hidden>
         <button id="tab-captions" type="button" aria-controls="inspector-content" aria-pressed="true">Legendas</button>
         <button id="tab-camera" type="button" aria-controls="camera-panel" aria-pressed="false">Câmera</button>
+        <button id="tab-card" type="button" aria-controls="card-panel" aria-pressed="false">Card social</button>
       </div>
       <div class="inspector-editor">
       <div id="inspector-content" hidden>
@@ -97,6 +104,25 @@
           <button type="button" id="apply-camera" class="secondary camera-batch">Aplicar aos outros cortes</button>
           <p id="camera-status" class="camera-note" aria-live="polite"></p>
         </div>
+      </div>
+      <div id="card-panel" hidden>
+        <h3>Card social ou CTA</h3>
+        <p class="camera-note">A imagem aparece do começo ao fim do corte.</p>
+        <label class="field" for="card-file">Imagem do card</label>
+        <input id="card-file" class="card-file" type="file" accept="image/png,image/jpeg,image/webp">
+        <div id="card-controls" hidden>
+          <div class="camera-field"><label for="card-size">Tamanho</label><output id="card-size-value"></output></div>
+          <input id="card-size" type="range" min="5" max="80" step="1">
+          <div class="camera-field"><label for="card-x">Posição horizontal</label></div>
+          <input id="card-x" type="range" min="0" max="100" step="0.1">
+          <div class="camera-field"><label for="card-y">Posição vertical</label></div>
+          <input id="card-y" type="range" min="0" max="100" step="0.1">
+          <button type="button" id="copy-card" class="secondary">Aplicar aos cortes deste vídeo</button>
+          <button type="button" id="save-default-card" class="secondary">Usar em novos cortes</button>
+          <button type="button" id="remove-card" class="secondary">Remover deste corte</button>
+        </div>
+        <button type="button" id="clear-default-card" class="secondary" hidden>Desativar card para novos cortes</button>
+        <p id="card-status" class="camera-note" role="status"></p>
       </div>
       </div>
       <div class="export-row"><a id="download" class="secondary button-link" hidden>Baixar MP4</a><button class="primary" type="button" id="export" disabled>Exportar MP4</button></div>

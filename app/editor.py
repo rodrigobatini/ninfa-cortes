@@ -140,6 +140,16 @@ def run_ffmpeg(args, directory=None):
         raise RuntimeError(result.stderr.strip()[-900:] or "O FFmpeg não conseguiu concluir o vídeo.")
 
 
+def card_filter(graph, card):
+    ratio = card["width"] / card["height"]
+    width = max(1, round(min(WIDTH, HEIGHT * ratio) * card["size"] / 100))
+    height = max(1, round(width / ratio))
+    x = round(max(0, min(WIDTH - width, WIDTH * card["x"] / 100 - width / 2)))
+    y = round(max(0, min(HEIGHT - height, HEIGHT * card["y"] / 100 - height / 2)))
+    return (graph.removesuffix("[v]") + f"[base];[1:v]scale={width}:{height},format=rgba[card];"
+            f"[base][card]overlay=x={x}:y={y}:eof_action=repeat:format=auto,format=yuv420p[v]")
+
+
 def render(clip, draft, directory, preview=False):
     directory.mkdir(parents=True, exist_ok=True)
     layout = camera_layout(clip, draft)
@@ -158,8 +168,11 @@ def render(clip, draft, directory, preview=False):
         make_ass(clip, draft, directory / "overlay.ass")
         graph = cl_render.filter_graph(layout, "overlay.ass")
     source = clip["source_path"]
-    args = ["-ss", f"{clip['start']:.3f}", "-t", f"{clip['duration']:.3f}", "-i", source,
-            "-filter_complex", graph, "-map", "[v]", "-map", "0:a:0", "-r", "30" if preview else cl_render.out_fps(Path(source)),
+    args = ["-ss", f"{clip['start']:.3f}", "-t", f"{clip['duration']:.3f}", "-i", source]
+    if not preview and (card := draft.get("card")):
+        graph = card_filter(graph, card)
+        args += ["-i", clip["card_path"]]
+    args += ["-filter_complex", graph, "-map", "[v]", "-map", "0:a:0", "-r", "30" if preview else cl_render.out_fps(Path(source)),
             "-c:a", "aac", "-b:a", "128k" if preview else "192k", "-movflags", "+faststart"]
     try:
         encoder = ["-c:v", "h264_nvenc", "-preset", "p5", "-cq", "23" if preview else "19"]

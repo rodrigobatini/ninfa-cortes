@@ -1,5 +1,7 @@
 """Local web editor and AI Stream Clipper job orchestration."""
 import json
+from hashlib import sha256
+from io import BytesIO
 import logging
 import os
 import re
@@ -17,6 +19,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ["BATINI_CLIP_DATA"]).resolve()
@@ -99,13 +102,23 @@ def media_path(ref):
     return path if path.is_absolute() else DATA / path
 
 
+def card_path(key):
+    if not re.fullmatch(r"[0-9a-f]{64}", key):
+        raise HTTPException(404, "Imagem não encontrada.")
+    return DATA / "social-cards" / f"{key}.png"
+
+
+def default_card():
+    return next((row["card"] for row in records("preference") if row["id"] == "social-card"), None)
+
+
 def create_clip(job, pick, source, words, layout, order, original=None, key=None):
     start, end = pick["start"], pick["end"]
     clip = {"id": key or uuid.uuid4().hex, "job": job, "title": pick["title"], "start": start,
             "end": end, "duration": round(end - start, 3), "source_path": source_reference(source), "layout": layout,
             "original": source_reference(original) if original else None, "order": order,
             "draft": {"hook": pick.get("hook", ""), "x": 50.0, "y": 65.9, "style": "palavra",
-                      "revision": 0, "cues": editor.cue_list(words, start, end)},
+                      "revision": 0, "cues": editor.cue_list(words, start, end), "card": default_card()},
             "preview": "pending", "export": "pending"}
     put("clip", clip)
     return clip
@@ -123,7 +136,8 @@ for clip in records("clip"):
 
 
 class NewJob(BaseModel):
-    url: str = Field(min_length=5, max_length=500)
+    url: str | None = Field(default=None, min_length=5, max_length=500)
+    path: str | None = Field(default=None, min_length=1, max_length=32767)
     count: int = Field(default=3, ge=1, le=30)
 
 
@@ -131,6 +145,13 @@ class CameraEdit(BaseModel):
     horizontal: int = Field(default=0, ge=-100, le=100)
     vertical: int = Field(default=0, ge=-100, le=100)
     zoom: int = Field(default=100, ge=100, le=150)
+
+
+class CardEdit(BaseModel):
+    image: str = Field(pattern=r"^[0-9a-f]{64}$")
+    x: float = Field(ge=0, le=100)
+    y: float = Field(ge=0, le=100)
+    size: float = Field(ge=5, le=80)
 
 
 class DraftEdit(BaseModel):
@@ -141,6 +162,7 @@ class DraftEdit(BaseModel):
     style: str = Field(pattern=r"^(palavra|frase)$")
     texts: list[str] = Field(max_length=200)
     camera: CameraEdit | None = None
+    card: CardEdit | None = None
 
 
 def video_id(url):
@@ -198,7 +220,7 @@ def automatic_picks(words, spikes, duration, count):
 
 
 def find_source(id_value):
-    jobs = {job["id"] for job in records("job") if job["video_id"] == id_value}
+    jobs = {job["id"] for job in records("job") if job.get("video_id") == id_value}
     for clip in records("clip"):
         if clip["job"] in jobs:
             source = media_path(clip["source_path"])
@@ -218,28 +240,37 @@ def find_source(id_value):
     return None
 
 
-def generate(job, count):
+def youtube_source(job, directory):
     import yt_dlp
 
+    progress(job, "Lendo o vídeo do YouTube", 5)
+    url = f"https://www.youtube.com/watch?v={job['video_id']}"
+    meta = cl_fetch.probe_source(url)
+    job["title"] = meta["title"] or job["title"]
+    source = find_source(job["video_id"])
+    if source:
+        return source
+    progress(job, "Baixando vídeo e áudio", 12)
+    opts = cl_common.ytdlp_base_opts()
+    opts.update({"format": "bv*[height<=1080][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]",
+                 "outtmpl": str(directory / "source.%(ext)s"), "merge_output_format": "mp4",
+                 "noplaylist": True, "progress_hooks": [lambda p: download_progress(job, p)]})
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        ydl.download([url])
+    source = next((p for p in directory.glob("source.*") if p.suffix in {".mp4", ".webm", ".mkv"}), None)
+    if not source:
+        raise RuntimeError("O YouTube não entregou uma faixa de vídeo utilizável.")
+    return source
+
+
+def generate(job, count):
     directory = DATA / "sources" / job["id"]
     directory.mkdir(parents=True, exist_ok=True)
     try:
-        progress(job, "Lendo o vídeo do YouTube", 5, status="working")
-        url = f"https://www.youtube.com/watch?v={job['video_id']}"
-        meta = cl_fetch.probe_source(url)
-        job["title"] = meta["title"] or job["title"]
-        source = find_source(job["video_id"])
-        if not source:
-            progress(job, "Baixando vídeo e áudio", 12)
-            opts = cl_common.ytdlp_base_opts()
-            opts.update({"format": "bv*[height<=1080][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]",
-                         "outtmpl": str(directory / "source.%(ext)s"), "merge_output_format": "mp4",
-                         "noplaylist": True, "progress_hooks": [lambda p: download_progress(job, p)]})
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                ydl.download([url])
-            source = next((p for p in directory.glob("source.*") if p.suffix in {".mp4", ".webm", ".mkv"}), None)
-            if not source:
-                raise RuntimeError("O YouTube não entregou uma faixa de vídeo utilizável.")
+        progress(job, "Lendo o vídeo de origem", 5, status="working")
+        source = Path(job["local_path"]) if "local_path" in job else youtube_source(job, directory)
+        if not source.is_file():
+            raise RuntimeError("O arquivo de origem não está mais no local selecionado.")
         duration = cl_common.media_duration(source)
         progress(job, "Transcrevendo em português", 35)
         (directory / "media").mkdir(exist_ok=True)
@@ -278,6 +309,8 @@ def download_progress(job, status):
 def media_work(key, mode, snapshot):
     try:
         source = {**snapshot, "source_path": str(media_path(snapshot["source_path"]))}
+        if mode == "export" and (card := snapshot["draft"].get("card")):
+            source["card_path"] = card_path(card["image"])
         editor.render(source, snapshot["draft"], clip_directory(key) / mode, preview=mode == "preview")
         status, error = "ready", None
     except Exception as exc:
@@ -318,20 +351,51 @@ async def local_only(request: Request, proceed):
 
 @app.get("/api/jobs")
 def list_jobs():
-    return [job for job in reversed(records("job")) if not job.get("internal")]
+    return [public_job(job) for job in reversed(records("job")) if not job.get("internal") and not job.get("removed")]
+
+
+def public_job(job):
+    return {key: value for key, value in job.items() if key != "local_path"}
 
 
 @app.post("/api/jobs", status_code=202)
 def new_job(body: NewJob):
     key = uuid.uuid4().hex
-    job = {"id": key, "video_id": video_id(body.url), "title": "Novo vídeo", "created": time.time(),
+    if bool(body.url) == bool(body.path):
+        raise HTTPException(400, "Escolha um link do YouTube ou um arquivo local.")
+    if body.path:
+        raw = Path(body.path)
+        try:
+            local = raw.is_absolute() and (os.name != "nt" or re.fullmatch(r"[A-Za-z]:", raw.drive))
+            source = raw.resolve(strict=True) if local else None
+        except (OSError, ValueError):
+            source = None
+        if not source or not source.is_file() or source.suffix.lower() not in {".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi", ".mts", ".m2ts"}:
+            raise HTTPException(400, "Selecione um arquivo de vídeo local válido.")
+        origin = {"local_path": str(source), "title": source.stem}
+    else:
+        origin = {"video_id": video_id(body.url), "title": "Novo vídeo"}
+    job = {"id": key, **origin, "created": time.time(),
            "status": "queued", "progress": 0, "message": "Na fila de geração"}
     with TASK_LOCK:
         if getattr(app.state, "stopping", False):
             raise HTTPException(409, "O estúdio está encerrando.")
         put("job", job)
         WORKER.submit(generate, job, body.count)
-    return job
+    return public_job(job)
+
+
+@app.delete("/api/jobs/{key}")
+def remove_job(key: str):
+    with TASK_LOCK, CLIP_LOCK:
+        job = get("job", key)
+        if job["status"] in {"queued", "working"} or any(
+            clip["job"] == key and "working" in (clip["preview"], clip["export"]) for clip in records("clip")
+        ):
+            raise HTTPException(409, "Aguarde o processamento antes de remover este vídeo.")
+        job["removed"] = True
+        put("job", job)
+    return {"removed": True}
 
 
 @app.get("/api/health")
@@ -361,16 +425,28 @@ def public_clip(clip):
 @app.get("/api/jobs/{key}/clips")
 def list_clips(key: str):
     return [{k: v for k, v in public_clip(clip).items() if k != "draft"}
-            for clip in sorted(records("clip"), key=lambda c: c["order"]) if clip["job"] == key]
+            for clip in sorted(records("clip"), key=lambda c: c["order"]) if clip["job"] == key and not clip.get("removed")]
+
+
+@app.delete("/api/clips/{key}")
+def remove_clip(key: str):
+    with TASK_LOCK, CLIP_LOCK:
+        clip = get("clip", key)
+        if "working" in (clip["preview"], clip["export"]):
+            raise HTTPException(409, "Aguarde o processamento antes de remover este corte.")
+        clip["removed"] = True
+        put("clip", clip)
+    return {"removed": True}
 
 
 @app.get("/api/clips/{key}")
 def read_clip(key: str):
     clip = get("clip", key)
-    draft = {"camera": editor.DEFAULT_CAMERA, "camera_revision": 0, **clip["draft"]}
+    draft = {"camera": editor.DEFAULT_CAMERA, "camera_revision": 0, "card": None, **clip["draft"]}
     ranges = [[segment["t0"], segment["t1"]] for segment in clip["layout"]["segments"] if segment["mode"] == "facecam"]
     return {**public_clip(clip), "draft": draft, "camera_ranges": ranges,
-            "preview_camera_revision": clip.get("preview_camera_revision", 0), "events": caption_events_for(clip)}
+            "preview_camera_revision": clip.get("preview_camera_revision", 0), "events": caption_events_for(clip),
+            "default_card": default_card()}
 
 
 def caption_events_for(clip):
@@ -388,11 +464,86 @@ async def save(key: str, body: DraftEdit):
             raise HTTPException(400, "Cada trecho da legenda pode ter até 150 caracteres.")
         if body.camera:
             set_camera(draft, body.camera.model_dump())
+        if "card" in body.model_fields_set:
+            if body.card:
+                file = card_path(body.card.image)
+                if not file.is_file():
+                    raise HTTPException(404, "Imagem não encontrada.")
+                with Image.open(file) as image:
+                    draft["card"] = {**body.card.model_dump(), "width": image.width, "height": image.height}
+            else:
+                draft["card"] = None
         draft.update(hook=body.hook.strip(), x=body.x, y=body.y, style=body.style, revision=draft["revision"] + 1)
         for cue, text in zip(draft["cues"], body.texts):
             cue["text"] = text.strip()
         put("clip", clip)
     return read_clip(key)
+
+
+@app.post("/api/social-cards")
+async def upload_card(request: Request):
+    data = bytearray()
+    async for chunk in request.stream():
+        if len(data) + len(chunk) > 8 * 1024 * 1024:
+            raise HTTPException(413, "A imagem pode ter até 8 MB.")
+        data.extend(chunk)
+    try:
+        with Image.open(BytesIO(data), formats=["PNG", "JPEG", "WEBP"]) as original:
+            if original.width * original.height > 16_000_000 or getattr(original, "is_animated", False):
+                raise HTTPException(400, "Use uma imagem estática de até 16 megapixels.")
+            image = ImageOps.exif_transpose(original).convert("RGBA")
+            image.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError) as error:
+        raise HTTPException(400, "Escolha uma imagem PNG, JPG ou WebP válida.") from error
+    encoded = BytesIO()
+    image.save(encoded, format="PNG")
+    payload = encoded.getvalue()
+    key = sha256(payload).hexdigest()
+    file = card_path(key)
+    file.parent.mkdir(parents=True, exist_ok=True)
+    temporary = file.with_suffix(f".{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_bytes(payload)
+        os.replace(temporary, file)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return {"image": key, "width": image.width, "height": image.height}
+
+
+@app.get("/api/social-cards/{key}")
+def social_card(key: str):
+    file = card_path(key)
+    if not file.is_file():
+        raise HTTPException(404, "Imagem não encontrada.")
+    return FileResponse(file, media_type="image/png", headers={"Cache-Control": "private, max-age=31536000, immutable"})
+
+
+@app.post("/api/clips/{key}/card-batch")
+def apply_card_to_batch(key: str):
+    with CLIP_LOCK, closing(connect()) as db, db:
+        source = get("clip", key)
+        card = source["draft"].get("card")
+        if not card:
+            raise HTTPException(400, "Adicione um card primeiro.")
+        changes = []
+        for clip in records("clip"):
+            if (clip["job"] == source["job"] and clip["id"] != key and not clip.get("removed")
+                    and clip["draft"].get("card") != card):
+                clip["draft"]["card"] = card
+                clip["draft"]["revision"] += 1
+                changes.append((json.dumps(clip, ensure_ascii=False), clip["id"]))
+        db.executemany("UPDATE records SET payload=? WHERE kind='clip' AND id=?", changes)
+    return {"updated": len(changes)}
+
+
+@app.put("/api/clips/{key}/card-default")
+def set_default_card(key: str, enabled: bool):
+    with CLIP_LOCK:
+        card = get("clip", key)["draft"].get("card") if enabled else None
+        if enabled and not card:
+            raise HTTPException(400, "Adicione um card primeiro.")
+        put("preference", {"id": "social-card", "card": card})
+    return {"card": card}
 
 
 def set_camera(draft, camera):
@@ -453,6 +604,8 @@ def send_media(key: str, mode: str, download: bool = False):
     file = media_path(clip["original"] or "") if mode == "original" else clip_directory(key) / mode / f"{mode}.mp4"
     if not file.is_file():
         raise HTTPException(404, "O vídeo ainda não está pronto.")
+    if mode == "export" and clip.get("export_revision") != clip["draft"]["revision"]:
+        raise HTTPException(409, "Exporte novamente para incluir as alterações do rascunho.")
     filename = f"{clip['order']:02}-{cl_common.slug(clip['title'])}.mp4" if download else None
     return FileResponse(file, media_type="video/mp4", filename=filename, headers={"Cache-Control": "no-store"})
 
@@ -475,6 +628,11 @@ def poster(key: str):
         finally:
             temporary.unlink(missing_ok=True)
     return FileResponse(file, media_type="image/jpeg")
+
+
+@app.get("/")
+def studio_page():
+    return FileResponse(ROOT / "web/index.html", headers={"Cache-Control": "no-store"})
 
 
 app.mount("/fonts", StaticFiles(directory=ENGINE / "assets/fonts"))
