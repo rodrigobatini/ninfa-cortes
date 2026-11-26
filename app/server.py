@@ -145,6 +145,8 @@ class CameraEdit(BaseModel):
     horizontal: int = Field(default=0, ge=-100, le=100)
     vertical: int = Field(default=0, ge=-100, le=100)
     zoom: int = Field(default=100, ge=100, le=150)
+    pan_x: int = Field(default=0, ge=-100, le=100)
+    pan_y: int = Field(default=0, ge=-100, le=100)
 
 
 class CardEdit(BaseModel):
@@ -442,7 +444,8 @@ def remove_clip(key: str):
 @app.get("/api/clips/{key}")
 def read_clip(key: str):
     clip = get("clip", key)
-    draft = {"camera": editor.DEFAULT_CAMERA, "camera_revision": 0, "card": None, **clip["draft"]}
+    draft = {"camera_revision": 0, "card": None, **clip["draft"]}
+    draft["camera"] = {**editor.DEFAULT_CAMERA, **draft.get("camera", {})}
     ranges = [[segment["t0"], segment["t1"]] for segment in clip["layout"]["segments"] if segment["mode"] == "facecam"]
     return {**public_clip(clip), "draft": draft, "camera_ranges": ranges,
             "preview_camera_revision": clip.get("preview_camera_revision", 0), "events": caption_events_for(clip),
@@ -463,7 +466,7 @@ async def save(key: str, body: DraftEdit):
         if len(body.texts) != len(draft["cues"]) or any(len(text) > 150 for text in body.texts):
             raise HTTPException(400, "Cada trecho da legenda pode ter até 150 caracteres.")
         if body.camera:
-            set_camera(draft, body.camera.model_dump())
+            set_camera(draft, {**editor.DEFAULT_CAMERA, **draft.get("camera", {}), **body.camera.model_dump(exclude_unset=True)})
         if "card" in body.model_fields_set:
             if body.card:
                 file = card_path(body.card.image)
@@ -547,7 +550,7 @@ def set_default_card(key: str, enabled: bool):
 
 
 def set_camera(draft, camera):
-    if draft.get("camera", editor.DEFAULT_CAMERA) == camera:
+    if {**editor.DEFAULT_CAMERA, **draft.get("camera", {})} == {**editor.DEFAULT_CAMERA, **camera}:
         return False
     draft["camera"] = camera
     draft["camera_revision"] = draft.get("camera_revision", 0) + 1
@@ -561,7 +564,7 @@ async def apply_camera_to_batch(key: str):
         camera = source["draft"].get("camera", editor.DEFAULT_CAMERA)
         changed = 0
         for clip in records("clip"):
-            if clip["id"] == key or clip["job"] != source["job"] or not any(
+            if clip["id"] == key or clip["job"] != source["job"] or clip.get("removed") or not any(
                 s["mode"] == "facecam" for s in clip["layout"]["segments"]
             ):
                 continue
@@ -574,9 +577,10 @@ async def apply_camera_to_batch(key: str):
 
 @app.get("/api/clips/{key}/camera-frame")
 def get_camera_frame(key: str, at: float = Query(ge=0, le=180), horizontal: int = Query(0, ge=-100, le=100),
-                     vertical: int = Query(0, ge=-100, le=100), zoom: int = Query(100, ge=100, le=150)):
+                     vertical: int = Query(0, ge=-100, le=100), zoom: int = Query(100, ge=100, le=150),
+                     pan_x: int = Query(0, ge=-100, le=100), pan_y: int = Query(0, ge=-100, le=100)):
     clip = get("clip", key)
-    camera = CameraEdit(horizontal=horizontal, vertical=vertical, zoom=zoom).model_dump()
+    camera = CameraEdit(horizontal=horizontal, vertical=vertical, zoom=zoom, pan_x=pan_x, pan_y=pan_y).model_dump()
     try:
         source = {**clip, "source_path": str(media_path(clip["source_path"]))}
         frame = editor.camera_frame(source, camera, at)

@@ -12,11 +12,12 @@ import cl_render
 from cl_common import video_input
 
 WIDTH, HEIGHT = 1080, 1920
-DEFAULT_CAMERA = {"horizontal": 0, "vertical": 0, "zoom": 100}
+DEFAULT_CAMERA = {"horizontal": 0, "vertical": 0, "zoom": 100, "pan_x": 0, "pan_y": 0}
 
 
 def adjust_camera(segment, camera):
-    """Pan inside the detected webcam box without changing the gameplay crop."""
+    """Adjust the webcam crop independently of the gameplay crop."""
+    camera = {**DEFAULT_CAMERA, **camera}
     if segment["mode"] != "facecam" or camera == DEFAULT_CAMERA:
         return segment
     x, y, width, height = segment["cam"]
@@ -37,6 +38,13 @@ def adjust_camera(segment, camera):
 
     crop_x = origin(x + (width - crop_width) / 2, left, right - crop_width, -camera["horizontal"])
     crop_y = origin(y + (height - crop_height) / 2, top, bottom - crop_height, camera["vertical"])
+    if camera["pan_x"] or camera["pan_y"]:
+        source_width = segment.get("src_w", right)
+        source_height = segment.get("src_h", bottom)
+        shifted_x = round((crop_x + width * camera["pan_x"] / 100) / 2) * 2
+        shifted_y = round((crop_y + height * camera["pan_y"] / 100) / 2) * 2
+        crop_x = min((source_width - crop_width) // 2 * 2, max(0, shifted_x))
+        crop_y = min((source_height - crop_height) // 2 * 2, max(0, shifted_y))
     return {**segment, "cam": [crop_x, crop_y, crop_width, crop_height]}
 
 

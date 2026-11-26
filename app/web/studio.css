@@ -65,6 +65,10 @@ body {
 .icon-remove { background: transparent; color: var(--rose-ink); padding: .15rem .42rem; font-size: 1.15rem; }
 .clip-row .clip-card { min-width: 0; }
 .source-picker { font-size: .82rem; padding-inline: .52rem; }
+.camera-preview { pointer-events: auto; cursor: grab; touch-action: none; }
+.camera-preview:active { cursor: grabbing; }
+.camera-fine { margin-top: 14px; font-size: .85rem; }
+.camera-fine summary { cursor: pointer; }
 @media (max-width: 950px) {
   .new-job { flex-wrap: wrap; }
   .new-job input { flex-basis: 7rem; }

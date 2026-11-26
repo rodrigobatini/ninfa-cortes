@@ -10,7 +10,8 @@ let stopped = false;
 let dirty = false, saving = null, saveTimer = null, warningTimer = null;
 let revision = 0, editVersion = 0, selectedRequest = 0, mediaSource = "", activeCue = -1;
 let activeTab = "captions", cameraTimer = null, cameraRequest = 0;
-const cameraDefaults = { horizontal: 0, vertical: 0, zoom: 100 };
+const cameraDefaults = { horizontal: 0, vertical: 0, zoom: 100, pan_x: 0, pan_y: 0 };
+const cameraPreview = $("camera-preview");
 
 async function api(path, method = "GET", body) {
   const response = await fetch(`/api/${path}`, {
@@ -174,7 +175,7 @@ async function selectClip(key) {
   timeline.value = 0;
   $("controls").hidden = false;
   $("edit-tabs").hidden = false;
-  for (const [name, value] of Object.entries(item.draft.camera)) $("camera-" + name).value = value;
+  for (const [name, value] of Object.entries({ ...cameraDefaults, ...item.draft.camera })) $("camera-" + name).value = value;
   $("camera-status").textContent = "";
   $("card-status").textContent = "";
   if (item.draft.card) {
@@ -316,7 +317,7 @@ function setEditTab(tab) {
   $("camera-panel").hidden = !camera || !clip;
   $("card-panel").hidden = tab !== "card" || !clip;
   cardPreview.classList.toggle("is-editing", tab === "card");
-  $("viewer-hint").textContent = camera ? "Ajuste a câmera com o vídeo pausado" :
+  $("viewer-hint").textContent = camera ? "Pause o vídeo e arraste a facecam" :
     tab === "card" ? "Arraste o card na prévia" : "Arraste a legenda na prévia";
   const ranges = clip?.camera_ranges || [];
   $("camera-controls").hidden = ranges.length === 0;
@@ -549,6 +550,31 @@ for (const key of Object.keys(cameraDefaults)) $("camera-" + key).oninput = () =
   cameraStatus();
   drawCameraFrame(video.currentTime, 135);
   markDirty();
+};
+let cameraDrag = null;
+cameraPreview.onpointerdown = (event) => {
+  if (!clip || !video.paused || activeTab !== "camera" || event.button !== 0) return;
+  const { pan_x, pan_y, zoom } = readCamera();
+  const { width, height } = cameraPreview.getBoundingClientRect();
+  cameraDrag = { key: clip.id, x: event.clientX, y: event.clientY, pan_x, pan_y, width, height, zoom };
+  cameraPreview.setPointerCapture(event.pointerId);
+  event.preventDefault();
+};
+cameraPreview.onpointermove = (event) => {
+  if (!cameraDrag || cameraDrag.key !== clip?.id) return;
+  const { x, y, pan_x, pan_y, width, height, zoom } = cameraDrag;
+  const clamp = (value) => Math.max(-100, Math.min(100, Math.round(value)));
+  $("camera-pan_x").value = clamp(pan_x - (event.clientX - x) / width * (10000 / zoom));
+  $("camera-pan_y").value = clamp(pan_y - (event.clientY - y) / height * (10000 / zoom));
+  cameraStatus();
+  drawCameraFrame(video.currentTime, 140);
+};
+cameraPreview.onpointerup = cameraPreview.onpointercancel = () => {
+  if (cameraDrag && clip?.id === cameraDrag.key) {
+    drawCameraFrame();
+    markDirty();
+  }
+  cameraDrag = null;
 };
 $("reset-camera").onclick = () => {
   for (const [key, value] of Object.entries(cameraDefaults)) $("camera-" + key).value = value;

@@ -7,8 +7,8 @@
   <title>Ninfa Cortes</title>
   <link rel="icon" href="/brand/ninfa.png">
   <link rel="preload" href="/brand/lilita.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="/studio.css?v=local-card">
-  <script src="/studio.js?v=local-card" defer></script>
+  <link rel="stylesheet" href="/studio.css?v=camera-pan">
+  <script src="/studio.js?v=camera-pan" defer></script>
 </head>
 <body>
   <header class="bar">
@@ -52,7 +52,7 @@
       <div class="stage">
         <div class="phone" id="phone">
           <video id="video" preload="metadata" playsinline aria-label="Prévia do clipe"></video>
-          <img id="camera-preview" class="camera-preview" alt="Prévia do enquadramento da câmera" hidden>
+          <img id="camera-preview" class="camera-preview" alt="Prévia da câmera. Arraste para mover o recorte." draggable="false" hidden>
           <div id="hook-preview" class="hook-preview" hidden></div>
           <div id="caption-preview" class="caption-preview" role="button" tabindex="0" aria-label="Legenda na prévia. Arraste ou use as setas para mudar a posição."></div>
           <img id="card-preview" class="card-preview" alt="Card social na prévia" draggable="false" hidden>
@@ -91,15 +91,22 @@
         <h3>Enquadramento da facecam</h3>
         <p id="camera-unavailable" class="camera-note" hidden>Este corte não tem uma facecam separada para ajustar.</p>
         <div id="camera-controls" hidden>
-          <p class="camera-note">Suba ou desça o rosto no quadro. O gameplay mantém o mesmo recorte.</p>
+          <p class="camera-note">Arraste a facecam na prévia pausada ou mova o recorte pelos controles. O gameplay mantém o mesmo enquadramento.</p>
+          <div class="camera-field"><label for="camera-pan_x">Recorte horizontal</label><output id="camera-pan_x-value"></output></div>
+          <input id="camera-pan_x" type="range" min="-100" max="100" step="1" value="0">
+          <div class="camera-field"><label for="camera-pan_y">Recorte vertical</label><output id="camera-pan_y-value"></output></div>
+          <input id="camera-pan_y" type="range" min="-100" max="100" step="1" value="0">
+          <div class="camera-field"><label for="camera-zoom">Zoom</label><output id="camera-zoom-value"></output></div>
+          <input id="camera-zoom" type="range" min="100" max="150" step="1" value="100">
+          <details class="camera-fine">
+          <summary>Ajustes finos do rosto</summary>
           <div class="camera-field"><label for="camera-vertical">Altura do rosto</label><output id="camera-vertical-value"></output></div>
           <input id="camera-vertical" type="range" min="-100" max="100" step="1" value="0">
           <div class="range-ends"><span>Mais abaixo</span><span>Mais acima</span></div>
           <div class="camera-field"><label for="camera-horizontal">Posição horizontal</label><output id="camera-horizontal-value"></output></div>
           <input id="camera-horizontal" type="range" min="-100" max="100" step="1" value="0">
           <div class="range-ends"><span>Esquerda</span><span>Direita</span></div>
-          <div class="camera-field"><label for="camera-zoom">Zoom</label><output id="camera-zoom-value"></output></div>
-          <input id="camera-zoom" type="range" min="100" max="150" step="1" value="100">
+          </details>
           <div class="camera-actions"><button type="button" id="reset-camera" class="secondary">Restaurar</button><button type="button" id="refresh-camera" class="secondary" disabled>Atualizar prévia</button></div>
           <button type="button" id="apply-camera" class="secondary camera-batch">Aplicar aos outros cortes</button>
           <p id="camera-status" class="camera-note" aria-live="polite"></p>
