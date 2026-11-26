@@ -9,6 +9,7 @@ from pathlib import Path
 
 import cl_captions as captions
 import cl_render
+from cl_common import video_input
 
 WIDTH, HEIGHT = 1080, 1920
 DEFAULT_CAMERA = {"horizontal": 0, "vertical": 0, "zoom": 100}
@@ -52,7 +53,7 @@ def camera_frame(clip, camera, at):
         return None
     x, y, width, height = adjust_camera(segment, camera)["cam"]
     cmd = [cl_render.ffmpeg(), "-nostdin", "-v", "error", "-ss", str(round(clip["start"] + at, 3)),
-           "-i", clip["source_path"], "-frames:v", "1", "-vf", f"crop={width}:{height}:{x}:{y},scale=540:360",
+           *video_input(clip["source_path"]), "-frames:v", "1", "-vf", f"crop={width}:{height}:{x}:{y},scale=540:360",
            "-c:v", "mjpeg", "-f", "image2pipe", "-"]
     result = subprocess.run(cmd, capture_output=True, timeout=12, check=True)
     return result.stdout or None
@@ -168,7 +169,7 @@ def render(clip, draft, directory, preview=False):
         make_ass(clip, draft, directory / "overlay.ass")
         graph = cl_render.filter_graph(layout, "overlay.ass")
     source = clip["source_path"]
-    args = ["-ss", f"{clip['start']:.3f}", "-t", f"{clip['duration']:.3f}", "-i", source]
+    args = ["-ss", f"{clip['start']:.3f}", "-t", f"{clip['duration']:.3f}", *video_input(source)]
     if not preview and (card := draft.get("card")):
         graph = card_filter(graph, card)
         args += ["-i", clip["card_path"]]

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from cl_common import YUNET, ffmpeg, video_stream
+from cl_common import YUNET, ffmpeg, video_input, video_stream
 
 OUT_W, OUT_H = 1080, 1920
 TOP_H = 720           # 37.5 % of the frame for the facecam
@@ -35,7 +35,7 @@ def grab_frames(video: Path, t0: float, dur: float, fps: float = 2.0):
     vs = video_stream(video)
     W, H = int(vs["width"]), int(vs["height"])
     ah = int(round(H * AW / W / 2) * 2)
-    cmd = [ffmpeg(), "-v", "error", "-ss", f"{t0:.3f}", "-t", f"{dur:.3f}", "-i", str(video),
+    cmd = [ffmpeg(), "-v", "error", "-ss", f"{t0:.3f}", "-t", f"{dur:.3f}", *video_input(video),
            "-vf", f"fps={fps},scale={AW}:{ah}", "-f", "rawvideo", "-pix_fmt", "bgr24", "pipe:1"]
     r = subprocess.run(cmd, capture_output=True)
     size = AW * ah * 3
@@ -531,7 +531,7 @@ def _similar(a, b):
 def _refine_cut(video: Path, t_abs: float) -> float:
     """Exact layout switch: the biggest picture change within +-0.6 s (15 fps, tiny frames)."""
     t0 = max(0.0, t_abs - 0.6)
-    cmd = [ffmpeg(), "-v", "error", "-ss", f"{t0:.3f}", "-t", "1.2", "-i", str(video), "-vf",
+    cmd = [ffmpeg(), "-v", "error", "-ss", f"{t0:.3f}", "-t", "1.2", *video_input(video), "-vf",
            "fps=15,scale=96:54", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"]
     r = subprocess.run(cmd, capture_output=True)
     n = len(r.stdout) // (96 * 54)

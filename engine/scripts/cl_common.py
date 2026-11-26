@@ -11,6 +11,7 @@ import site
 import subprocess
 import sys
 import time
+from functools import lru_cache
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -173,6 +174,34 @@ def video_stream(path) -> dict:
         if s.get("codec_type") == "video":
             return s
     return {}
+
+
+@lru_cache(maxsize=64)
+def _video_decoder(path: Path, modified: int, size: int, binary: str) -> tuple[str, ...]:
+    if video_stream(path).get("codec_name") != "av1":
+        return ()
+    options = ((), ("-hwaccel", "d3d11va", "-c:v", "av1"), ("-hwaccel", "cuda", "-c:v", "av1"))
+    for decoder in options:
+        try:
+            result = subprocess.run(
+                [binary, "-nostdin", "-v", "quiet", "-xerror", *decoder, "-i", str(path),
+                 "-map", "0:v:0", "-frames:v", "1", "-vf", "scale=32:32", "-c:v", "png", "-f", "image2pipe", "pipe:1"],
+                capture_output=True, timeout=12,
+            )
+        except subprocess.TimeoutExpired:
+            continue
+        if result.returncode == 0 and result.stdout.startswith(b"\x89PNG"):
+            return decoder
+    raise RuntimeError("O FFmpeg não conseguiu decodificar este vídeo AV1. Tente uma versão em H.264.")
+
+
+def video_input(path) -> list[str]:
+    path = Path(path)
+    decoder = ()
+    if IS_WIN:
+        stat = path.stat()
+        decoder = _video_decoder(path, stat.st_mtime_ns, stat.st_size, ffmpeg())
+    return [*decoder, "-i", str(path)]
 
 
 def add_cuda_dll_dirs() -> None:

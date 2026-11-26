@@ -623,7 +623,7 @@ def poster(key: str):
         offset = min(4, clip["duration"] / 3) + (0 if use_original else clip["start"])
         temporary = directory / f"{uuid.uuid4().hex}.jpg"
         try:
-            editor.run_ffmpeg(["-ss", str(offset), "-i", src, "-frames:v", "1", "-vf", "scale=240:-2", temporary])
+            editor.run_ffmpeg(["-ss", str(offset), *cl_common.video_input(src), "-frames:v", "1", "-vf", "scale=240:-2", temporary])
             os.replace(temporary, file)
         finally:
             temporary.unlink(missing_ok=True)
