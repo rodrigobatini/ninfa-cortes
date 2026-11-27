@@ -29,6 +29,9 @@ internal sealed class DesktopWindow : Form
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr window);
 
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
+
     [STAThread]
     private static void Main()
     {
@@ -140,7 +143,13 @@ internal sealed class DesktopWindow : Form
     {
         if (!IsLocal(e.Source)) return;
         var message = e.TryGetWebMessageAsString();
-        if (message == "pick-local-video")
+        if (message == "theme-dark" || message == "theme-light")
+        {
+            int dark = message == "theme-dark" ? 1 : 0;
+            if (DwmSetWindowAttribute(Handle, 20, ref dark, sizeof(int)) != 0)
+                DwmSetWindowAttribute(Handle, 19, ref dark, sizeof(int));
+        }
+        else if (message == "pick-local-video")
         {
             BeginInvoke((Action)PickLocalVideo);
         }

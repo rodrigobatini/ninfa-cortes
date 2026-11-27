@@ -7,7 +7,8 @@
   <title>Ninfa Cortes</title>
   <link rel="icon" href="/brand/ninfa.png">
   <link rel="preload" href="/brand/lilita.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="/studio.css?v=clip-title">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/studio.css?v=theme">
   <script src="/studio.js?v=clip-title" defer></script>
 </head>
 <body>
@@ -31,7 +32,10 @@
       </select>
       <button class="primary" type="submit">Gerar cortes</button>
     </form>
-    <button class="secondary" id="shutdown" type="button">Encerrar</button>
+    <div class="window-actions">
+      <button class="secondary" id="toggle-theme" type="button" aria-pressed="false" aria-label="Modo escuro" title="Alternar tema"><span aria-hidden="true">☾</span></button>
+      <button class="secondary" id="shutdown" type="button">Encerrar</button>
+    </div>
   </header>
   <div id="notice" class="notice" role="status" hidden></div>
   <main class="studio">
