@@ -156,6 +156,11 @@ class CardEdit(BaseModel):
     size: float = Field(ge=5, le=80)
 
 
+class TrimEdit(BaseModel):
+    start: float = Field(ge=0, allow_inf_nan=False)
+    end: float = Field(gt=0, allow_inf_nan=False)
+
+
 class DraftEdit(BaseModel):
     revision: int = Field(ge=0)
     hook: str = Field(max_length=80)
@@ -165,6 +170,7 @@ class DraftEdit(BaseModel):
     texts: list[str] = Field(max_length=200)
     camera: CameraEdit | None = None
     card: CardEdit | None = None
+    trim: TrimEdit | None = None
 
 
 def video_id(url):
@@ -446,6 +452,8 @@ def read_clip(key: str):
     clip = get("clip", key)
     draft = {"camera_revision": 0, "card": None, **clip["draft"]}
     draft["camera"] = {**editor.DEFAULT_CAMERA, **draft.get("camera", {})}
+    start, end = editor.trim_range(clip, draft)
+    draft["trim"] = {"start": start, "end": end}
     ranges = [[segment["t0"], segment["t1"]] for segment in clip["layout"]["segments"] if segment["mode"] == "facecam"]
     return {**public_clip(clip), "draft": draft, "camera_ranges": ranges,
             "preview_camera_revision": clip.get("preview_camera_revision", 0), "events": caption_events_for(clip),
@@ -453,7 +461,12 @@ def read_clip(key: str):
 
 
 def caption_events_for(clip):
-    return editor.caption_events(clip["draft"])
+    draft = clip["draft"]
+    start, end = editor.trim_range(clip, draft)
+    if start == 0 and end == clip["duration"]:
+        return editor.caption_events(draft)
+    events = editor.caption_events(editor.trim_captions(draft, start, end))
+    return [{**event, "start": event["start"] + start, "end": event["end"] + start} for event in events]
 
 
 @app.put("/api/clips/{key}/draft")
@@ -465,6 +478,11 @@ async def save(key: str, body: DraftEdit):
             raise HTTPException(409, "O rascunho foi alterado em outra aba. Atualize a página.")
         if len(body.texts) != len(draft["cues"]) or any(len(text) > 150 for text in body.texts):
             raise HTTPException(400, "Cada trecho da legenda pode ter até 150 caracteres.")
+        if body.trim:
+            start, end = round(body.trim.start, 3), round(body.trim.end, 3)
+            if end > clip["duration"] or round(end - start, 3) < min(.1, clip["duration"]):
+                raise HTTPException(400, "Escolha um início e um fim válidos dentro do corte.")
+            draft["trim"] = {"start": start, "end": end}
         if body.camera:
             set_camera(draft, {**editor.DEFAULT_CAMERA, **draft.get("camera", {}), **body.camera.model_dump(exclude_unset=True)})
         if "card" in body.model_fields_set:

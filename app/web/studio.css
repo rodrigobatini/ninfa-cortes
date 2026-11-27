@@ -70,6 +70,12 @@ body {
 .camera-fine { margin-top: 14px; font-size: .85rem; }
 .camera-fine summary { cursor: pointer; }
 .caption-batch { margin-bottom: 12px; font-size: .82rem; white-space: normal; }
+.trim-controls { width: min(90%, 600px); margin: 2px auto 0; font-size: .8rem; }
+.trim-controls summary { cursor: pointer; color: var(--text); padding: 5px 0; }
+.trim-controls output { color: var(--muted); margin-left: .45rem; }
+.trim-fields { display: grid; grid-template-columns: auto minmax(56px, 84px) minmax(0, 1fr); gap: 5px 8px; align-items: center; margin: 4px 0; }
+.trim-fields input, .trim-fields button, #trim-reset { min-height: 0; font-size: .78rem; padding: .28rem .42rem; }
+.trim-fields button { justify-self: start; white-space: normal; }
 @media (max-width: 950px) {
   .new-job { flex-wrap: wrap; }
   .new-job input { flex-basis: 7rem; }

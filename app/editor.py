@@ -126,6 +126,33 @@ def caption_events(draft):
     return events
 
 
+def trim_range(clip, draft):
+    trim = draft.get("trim") or {}
+    return trim.get("start", 0), trim.get("end", clip["duration"])
+
+
+def trim_captions(draft, start, end):
+    cues = []
+    for cue in draft["cues"]:
+        tokens = cue["text"].split()
+        if not tokens or cue["end"] <= start or cue["start"] >= end:
+            continue
+        boundaries = [*word_starts(cue, tokens), cue["end"]]
+        spoken = cue["words"]
+        original_text = [re.sub(r"[^\w]", "", word["w"].casefold()) for word in spoken]
+        edited_text = [re.sub(r"[^\w]", "", token.casefold()) for token in tokens]
+        speech_intervals = [(word["s"], word["e"]) for word in spoken] if original_text == edited_text else zip(boundaries, boundaries[1:])
+        words = [
+            {"s": max(start, left) - start, "e": min(end, right) - start, "w": token}
+            for token, left, right, (spoken_start, spoken_end) in zip(tokens, boundaries, boundaries[1:], speech_intervals)
+            if min(end, right, spoken_end) > max(start, left, spoken_start)
+        ]
+        if words:
+            cues.append({"start": words[0]["s"], "end": words[-1]["e"],
+                         "text": " ".join(word["w"] for word in words), "words": words})
+    return {**draft, "cues": cues}
+
+
 def make_ass(clip, draft, destination):
     captions.build_ass([], 0, clip["duration"], draft["hook"], destination, clip["layout"]["segments"], censor_on=False)
     lines = destination.read_text(encoding="utf-8").splitlines()
@@ -163,6 +190,14 @@ def render(clip, draft, directory, preview=False):
     directory.mkdir(parents=True, exist_ok=True)
     layout = camera_layout(clip, draft)
     clip = {**clip, "layout": layout}
+    start, end = trim_range(clip, draft)
+    if not preview and (start or end < clip["duration"]):
+        layout["segments"] = [
+            {**segment, "t0": max(start, segment["t0"]) - start, "t1": min(end, segment["t1"]) - start}
+            for segment in layout["segments"] if segment["t1"] > start and segment["t0"] < end
+        ]
+        clip.update(start=clip["start"] + start, duration=end - start)
+        draft = trim_captions(draft, start, end)
     file = directory / ("preview.mp4" if preview else "export.mp4")
     temporary = file.with_suffix(".part.mp4")
     if preview:
