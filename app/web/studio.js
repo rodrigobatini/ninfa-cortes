@@ -2,12 +2,16 @@ const $ = (id) => document.getElementById(id);
 const video = $("video");
 const timeline = $("timeline");
 const caption = $("caption-preview");
+const cardPreview = $("card-preview");
+const webview = window.chrome?.webview;
+let localVideo = null;
 let jobs = [], clips = [], currentJob = null, clip = null, events = [];
 let stopped = false;
 let dirty = false, saving = null, saveTimer = null, warningTimer = null;
 let revision = 0, editVersion = 0, selectedRequest = 0, mediaSource = "", activeCue = -1;
 let activeTab = "captions", cameraTimer = null, cameraRequest = 0;
-const cameraDefaults = { horizontal: 0, vertical: 0, zoom: 100 };
+const cameraDefaults = { horizontal: 0, vertical: 0, zoom: 100, pan_x: 0, pan_y: 0 };
+const cameraPreview = $("camera-preview");
 
 async function api(path, method = "GET", body) {
   const response = await fetch(`/api/${path}`, {
@@ -38,6 +42,8 @@ function listProjects() {
   $("projects").replaceChildren(...jobs.map(job => new Option(job.title, job.id)));
   if (currentJob) $("projects").value = currentJob;
   const job = jobs.find(row => row.id === currentJob);
+  $("remove-project").hidden = !job;
+  $("remove-project").disabled = ["queued", "working"].includes(job?.status);
   $("job-progress").hidden = !job || job.status === "ready";
   if (job) {
     $("progress").value = job.progress;
@@ -65,12 +71,24 @@ function listClips() {
     text.append(title, stamp);
     button.append(image, text);
     button.onclick = () => selectClip(item.id).catch(error => message(error.message));
-    return button;
+    const row = document.createElement("div");
+    row.className = "clip-row";
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "icon-remove";
+    remove.textContent = "×";
+    remove.title = "Remover corte";
+    remove.setAttribute("aria-label", `Remover corte: ${item.title}`);
+    remove.onclick = () => removeClip(item).catch(error => message(error.message));
+    row.append(button, remove);
+    return row;
   });
   if (!cards.length) {
     const empty = document.createElement("p");
     empty.className = "empty";
-    empty.textContent = currentJob ? "Os cortes aparecem assim que estiverem prontos." : "Cole um link do YouTube para começar.";
+    const job = jobs.find(row => row.id === currentJob);
+    empty.textContent = !job ? "Escolha um vídeo para começar." :
+      job.status === "ready" ? "Nenhum corte nesta lista." : "Os cortes aparecem assim que estiverem prontos.";
     cards.push(empty);
   }
   $("clip-list").replaceChildren(...cards);
@@ -88,9 +106,12 @@ async function selectProject(key) {
   $("clip-title").textContent = "Selecione um corte";
   $("inspector-content").hidden = true;
   $("camera-panel").hidden = true;
+  $("card-panel").hidden = true;
+  cardPreview.hidden = true;
   $("edit-tabs").hidden = true;
   hideCameraFrame();
   $("controls").hidden = true;
+  $("trim-controls").hidden = true;
   $("play-screen").hidden = true;
   $("hook-preview").hidden = true;
   $("export").disabled = true;
@@ -102,6 +123,31 @@ async function selectProject(key) {
   listClips();
   if (clips.length) await selectClip(clips[0].id);
 }
+
+async function removeClip(item) {
+  if (!confirm(`Remover o corte “${item.title}” da lista?`)) return;
+  await flush();
+  const project = currentJob;
+  await api(`clips/${item.id}`, "DELETE");
+  if (project !== currentJob) return;
+  if (clip?.id === item.id) await selectProject(project);
+  else {
+    clips = clips.filter(row => row.id !== item.id);
+    listClips();
+  }
+}
+
+$("remove-project").onclick = async () => {
+  const job = jobs.find(row => row.id === currentJob);
+  if (!job || !confirm(`Remover “${job.title}” e seus cortes da biblioteca? Os arquivos originais ficam no computador.`)) return;
+  try {
+    await flush();
+    await api(`jobs/${job.id}`, "DELETE");
+    jobs = jobs.filter(row => row.id !== job.id);
+    if (currentJob === job.id) await selectProject(jobs[0]?.id ?? null);
+    else listProjects();
+  } catch (error) { message(error.message); }
+};
 
 async function selectClip(key) {
   if (clip?.id === key) return;
@@ -129,9 +175,18 @@ async function selectClip(key) {
   timeline.max = item.duration;
   timeline.value = 0;
   $("controls").hidden = false;
+  $("trim-controls").hidden = false;
+  clip.draft.trim ??= { start: 0, end: item.duration };
+  showTrim();
   $("edit-tabs").hidden = false;
-  for (const [name, value] of Object.entries(item.draft.camera)) $("camera-" + name).value = value;
+  for (const [name, value] of Object.entries({ ...cameraDefaults, ...item.draft.camera })) $("camera-" + name).value = value;
   $("camera-status").textContent = "";
+  $("card-status").textContent = "";
+  $("caption-position-status").hidden = true;
+  if (item.draft.card) {
+    for (const key of ["x", "y", "size"]) $("card-" + key).value = item.draft.card[key];
+  }
+  drawCard();
   $("save-state").textContent = "";
   showCues();
   listClips();
@@ -261,10 +316,14 @@ function setEditTab(tab) {
   activeTab = tab;
   const camera = tab === "camera";
   $("tab-camera").setAttribute("aria-pressed", String(camera));
-  $("tab-captions").setAttribute("aria-pressed", String(!camera));
-  $("inspector-content").hidden = camera || !clip;
+  $("tab-captions").setAttribute("aria-pressed", String(tab === "captions"));
+  $("tab-card").setAttribute("aria-pressed", String(tab === "card"));
+  $("inspector-content").hidden = tab !== "captions" || !clip;
   $("camera-panel").hidden = !camera || !clip;
-  $("viewer-hint").textContent = camera ? "Ajuste a câmera com o vídeo pausado" : "Arraste a legenda na prévia";
+  $("card-panel").hidden = tab !== "card" || !clip;
+  cardPreview.classList.toggle("is-editing", tab === "card");
+  $("viewer-hint").textContent = camera ? "Pause o vídeo e arraste a facecam" :
+    tab === "card" ? "Arraste o card na prévia" : "Arraste a legenda na prévia";
   const ranges = clip?.camera_ranges || [];
   $("camera-controls").hidden = ranges.length === 0;
   $("camera-unavailable").hidden = ranges.length > 0;
@@ -277,6 +336,26 @@ function setEditTab(tab) {
   cameraStatus();
 }
 
+function drawCard() {
+  const card = clip?.draft.card;
+  cardPreview.hidden = !card;
+  $("card-controls").hidden = !card;
+  $("clear-default-card").hidden = !clip?.default_card;
+  if (!card) {
+    cardPreview.removeAttribute("src");
+    return;
+  }
+  const source = `/api/social-cards/${card.image}`;
+  if (cardPreview.getAttribute("src") !== source) cardPreview.src = source;
+  const ratio = card.width / card.height;
+  const width = Math.min(card.size, card.size * 16 / 9 * ratio);
+  const height = width * 9 / 16 / ratio;
+  cardPreview.style.width = `${width}%`;
+  cardPreview.style.left = `${Math.max(width / 2, Math.min(100 - width / 2, card.x))}%`;
+  cardPreview.style.top = `${Math.max(height / 2, Math.min(100 - height / 2, card.y))}%`;
+  $("card-size-value").value = `${card.size}%`;
+}
+
 function setPosition() {
   for (const key of ["x", "y"]) $(`${key}-value`).value = `${Math.round(Number($(key).value))}%`;
   caption.style.left = `${$("x").value}%`;
@@ -285,12 +364,15 @@ function setPosition() {
 
 function drawFrame(t = video.currentTime || 0, override = null) {
   if (!clip) return;
-  $("current").textContent = time(t);
+  $("current").textContent = $("trim-controls").open ?
+    `${time(t)},${String(Math.floor((t % 1) * 100)).padStart(2, "0")}` : time(t);
   timeline.value = t;
   const hook = $("hook-preview");
+  const { start, end } = clip.draft.trim;
+  const selected = t >= start && t < end;
   hook.textContent = $("hook").value;
-  hook.hidden = t >= 2.6 || !hook.textContent;
-  const e = events.find(hit => hit.start <= t && hit.end > t);
+  hook.hidden = !selected || t >= start + 2.6 || !hook.textContent;
+  const e = selected && events.find(hit => hit.start <= t && hit.end > t);
   const cueIndex = clip.draft.cues.findIndex(c => c.start <= t && c.end > t);
   if (cueIndex !== activeCue) {
     $("cue-list").children[activeCue]?.classList.remove("active");
@@ -336,7 +418,8 @@ async function saveChanges() {
       const key = clip.id;
       const version = editVersion;
       const body = { revision, hook: $("hook").value, x: Number($("x").value), y: Number($("y").value),
-        style: $("style").value, texts: clip.draft.cues.map(c => c.text), camera: readCamera() };
+        style: $("style").value, texts: clip.draft.cues.map(c => c.text), camera: readCamera(),
+        card: clip.draft.card ?? null, trim: clip.draft.trim };
       const result = await api(`clips/${key}/draft`, "PUT", body);
       if (!clip || clip.id !== key) return;
       revision = result.draft.revision;
@@ -355,15 +438,39 @@ async function saveChanges() {
   }
 }
 
+function selectLocalVideo(path) {
+  localVideo = path;
+  const source = $("source-url");
+  source.type = path ? "text" : "url";
+  source.value = path ? path.replaceAll("\\", "/").split("/").at(-1) : "";
+  source.readOnly = Boolean(path);
+  source.required = !path;
+  source.setAttribute("aria-label", path ? "Arquivo local selecionado" : "Link do vídeo no YouTube");
+  $("clear-local").hidden = !path;
+  $("pick-local").hidden = !webview || Boolean(path);
+}
+
+if (webview) {
+  $("pick-local").hidden = false;
+  $("pick-local").onclick = () => webview.postMessage("pick-local-video");
+  $("clear-local").onclick = () => selectLocalVideo(null);
+  webview.addEventListener("message", (event) => {
+    if (typeof event.data === "string" && event.data.startsWith("local-video:")) {
+      selectLocalVideo(event.data.slice("local-video:".length));
+    }
+  });
+}
+
 $("new-job").addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = event.submitter;
   button.disabled = true;
   try {
     await flush();
-    const job = await api("jobs", "POST", { url: $("source-url").value, count: Number($("count").value) });
+    const source = localVideo ? { path: localVideo } : { url: $("source-url").value };
+    const job = await api("jobs", "POST", { ...source, count: Number($("count").value) });
     jobs.unshift(job);
-    $("source-url").value = "";
+    selectLocalVideo(null);
     await selectProject(job.id);
   } catch (error) { message(error.message); }
   finally { button.disabled = false; }
@@ -371,11 +478,112 @@ $("new-job").addEventListener("submit", async (event) => {
 $("projects").onchange = (event) => selectProject(event.target.value).catch(error => message(error.message));
 $("tab-captions").onclick = () => setEditTab("captions");
 $("tab-camera").onclick = () => setEditTab("camera");
+$("tab-card").onclick = () => setEditTab("card");
+$("card-file").onchange = async (event) => {
+  const input = event.currentTarget;
+  const file = input.files[0];
+  const key = clip?.id;
+  if (!file || !key) return;
+  input.disabled = true;
+  try {
+    const response = await fetch("/api/social-cards", { method: "POST", body: file });
+    const image = await response.json();
+    if (!response.ok) throw new Error(image.detail || "Não foi possível carregar a imagem.");
+    if (clip?.id !== key) return;
+    const { x = 82, y = 16, size = 28 } = clip.draft.card ?? {};
+    clip.draft.card = { ...image, x, y, size };
+    for (const name of ["x", "y", "size"]) $("card-" + name).value = clip.draft.card[name];
+    $("card-status").textContent = "";
+    drawCard();
+    markDirty();
+  } catch (error) { message(error.message); }
+  finally { input.value = ""; input.disabled = false; }
+};
+for (const key of ["x", "y", "size"]) $("card-" + key).oninput = (event) => {
+  if (!clip?.draft.card) return;
+  clip.draft.card[key] = Number(event.currentTarget.value);
+  drawCard();
+  markDirty();
+};
+$("remove-card").onclick = () => {
+  if (!clip) return;
+  clip.draft.card = null;
+  $("card-status").textContent = "";
+  drawCard();
+  markDirty();
+};
+async function applyCard(button, path, method, status) {
+  const key = clip?.id;
+  if (!key) return;
+  button.disabled = true;
+  try {
+    await flush();
+    const result = await api(`clips/${key}/${path}`, method);
+    if (clip?.id !== key) return;
+    if ("card" in result) clip.default_card = result.card;
+    $("card-status").textContent = status(result);
+    drawCard();
+  } catch (error) { message(error.message); }
+  finally { button.disabled = false; }
+}
+$("copy-card").onclick = (event) => applyCard(event.currentTarget, "card-batch", "POST",
+  ({ updated }) => updated ? `Card aplicado a ${updated} corte(s) deste vídeo.` : "Todos os cortes deste vídeo já usam esse card.");
+$("save-default-card").onclick = (event) => applyCard(event.currentTarget, "card-default?enabled=true", "PUT",
+  () => "Os próximos cortes começam com este card.");
+$("clear-default-card").onclick = (event) => applyCard(event.currentTarget, "card-default?enabled=false", "PUT",
+  () => "Card padrão desativado.");
+let cardDrag = null;
+cardPreview.onpointerdown = (event) => {
+  if (!clip?.draft.card || activeTab !== "card") return;
+  const x = Number.parseFloat(cardPreview.style.left);
+  const y = Number.parseFloat(cardPreview.style.top);
+  cardDrag = { x, y, key: clip.id, startX: event.clientX, startY: event.clientY };
+  cardPreview.setPointerCapture(event.pointerId);
+  event.preventDefault();
+};
+cardPreview.onpointermove = (event) => {
+  if (!cardDrag || clip?.id !== cardDrag.key || !clip.draft.card) return;
+  const { width, height } = $("phone").getBoundingClientRect();
+  clip.draft.card.x = Math.max(0, Math.min(100, cardDrag.x + (event.clientX - cardDrag.startX) / width * 100));
+  clip.draft.card.y = Math.max(0, Math.min(100, cardDrag.y + (event.clientY - cardDrag.startY) / height * 100));
+  $("card-x").value = clip.draft.card.x;
+  $("card-y").value = clip.draft.card.y;
+  drawCard();
+};
+cardPreview.onpointerup = cardPreview.onpointercancel = () => {
+  if (cardDrag?.key === clip?.id) markDirty();
+  cardDrag = null;
+};
 for (const key of Object.keys(cameraDefaults)) $("camera-" + key).oninput = () => {
   video.pause();
   cameraStatus();
   drawCameraFrame(video.currentTime, 135);
   markDirty();
+};
+let cameraDrag = null;
+cameraPreview.onpointerdown = (event) => {
+  if (!clip || !video.paused || activeTab !== "camera" || event.button !== 0) return;
+  const { pan_x, pan_y, zoom } = readCamera();
+  const { width, height } = cameraPreview.getBoundingClientRect();
+  cameraDrag = { key: clip.id, x: event.clientX, y: event.clientY, pan_x, pan_y, width, height, zoom };
+  cameraPreview.setPointerCapture(event.pointerId);
+  event.preventDefault();
+};
+cameraPreview.onpointermove = (event) => {
+  if (!cameraDrag || cameraDrag.key !== clip?.id) return;
+  const { x, y, pan_x, pan_y, width, height, zoom } = cameraDrag;
+  const clamp = (value) => Math.max(-100, Math.min(100, Math.round(value)));
+  $("camera-pan_x").value = clamp(pan_x - (event.clientX - x) / width * (10000 / zoom));
+  $("camera-pan_y").value = clamp(pan_y - (event.clientY - y) / height * (10000 / zoom));
+  cameraStatus();
+  drawCameraFrame(video.currentTime, 140);
+};
+cameraPreview.onpointerup = cameraPreview.onpointercancel = () => {
+  if (cameraDrag && clip?.id === cameraDrag.key) {
+    drawCameraFrame();
+    markDirty();
+  }
+  cameraDrag = null;
 };
 $("reset-camera").onclick = () => {
   for (const [key, value] of Object.entries(cameraDefaults)) $("camera-" + key).value = value;
@@ -411,6 +619,22 @@ $("reset-position").onclick = () => {
   setPosition();
   markDirty();
 };
+$("apply-caption-position").onclick = async (event) => {
+  if (!clip) return;
+  const { id } = clip;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await flush();
+    const { updated } = await api(`clips/${id}/caption-position-batch`, "POST");
+    if (clip?.id !== id) return;
+    const status = $("caption-position-status");
+    status.textContent = updated ? `Posição aplicada a ${updated} ${updated === 1 ? "corte" : "cortes"} deste vídeo.` :
+      "Todos os cortes deste vídeo já usam esta posição.";
+    status.hidden = false;
+  } catch (error) { message(error.message); }
+  finally { button.disabled = false; }
+};
 let pointer = null;
 caption.onpointerdown = (event) => {
   if (!clip) return;
@@ -435,21 +659,76 @@ caption.onkeydown = (event) => {
   setPosition(); markDirty(); event.preventDefault();
 };
 
-function play() {
+function showTrim() {
+  const { start, end } = clip.draft.trim;
+  $("trim-start").value = start;
+  $("trim-end").value = end;
+  $("trim-start").max = clip.duration;
+  $("trim-end").max = clip.duration;
+  $("trim-length").value = `${(end - start).toFixed(2).replace(".", ",")} s`;
+}
+
+function setTrim(start, end) {
+  if (!clip) return;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end > clip.duration ||
+      Math.round((end - start) * 1000) < Math.min(100, Math.round(clip.duration * 1000))) {
+    showTrim();
+    message("Escolha um início e um fim dentro do corte.");
+    return;
+  }
+  if (start === clip.draft.trim.start && end === clip.draft.trim.end) return;
+  video.pause();
+  clip.draft.trim = { start, end };
+  showTrim();
+  drawFrame();
+  markDirty();
+}
+
+for (const edge of ["start", "end"]) {
+  const input = $("trim-" + edge);
+  input.onchange = () => {
+    if (!clip) return;
+    const next = { ...clip.draft.trim, [edge]: input.valueAsNumber };
+    setTrim(next.start, next.end);
+  };
+  $("trim-" + edge + "-here").onclick = () => {
+    if (!clip || !mediaSource) return;
+    const position = Math.min(clip.duration, Math.round(video.currentTime * 1000) / 1000);
+    const next = { ...clip.draft.trim, [edge]: position };
+    setTrim(next.start, next.end);
+  };
+}
+$("trim-reset").onclick = () => { if (clip) setTrim(0, clip.duration); };
+$("trim-controls").ontoggle = () => { drawFrame(); };
+
+async function play() {
   if (!mediaSource) return;
-  if (video.paused && clip && (dirty || clip.preview_camera_revision !== clip.draft.camera_revision)) {
-    flush().then(() => clip.preview_camera_revision !== clip.draft.camera_revision ? refreshCamera() : video.play()).catch(error => message(error.message));
-  } else if (video.paused) video.play().catch(error => message(error.message));
-  else video.pause();
+  if (!video.paused) { video.pause(); return; }
+  const key = clip?.id;
+  try {
+    await flush();
+    if (!clip || clip.id !== key) return;
+    if (clip.preview_camera_revision !== clip.draft.camera_revision) { await refreshCamera(); return; }
+    const { start, end } = clip.draft.trim;
+    if (video.ended || video.currentTime < start || video.currentTime >= end) video.currentTime = start;
+    await video.play();
+  } catch (error) { message(error.message); }
 }
 $("play").onclick = $("play-screen").onclick = play;
 video.onclick = play;
 video.addEventListener("play", () => { hideCameraFrame(); $("play").textContent = "Ⅱ"; $("play").ariaLabel = "Pausar"; $("play-screen").hidden = true; drawFrame(); });
 video.addEventListener("pause", () => { $("play").textContent = "▶"; $("play").ariaLabel = "Reproduzir"; drawFrame(); drawCameraFrame(); });
 video.addEventListener("seeked", () => { drawFrame(); drawCameraFrame(); });
-video.addEventListener("timeupdate", () => drawFrame());
+function updatePlayback() {
+  if (clip && !video.paused && video.currentTime >= clip.draft.trim.end) {
+    video.pause();
+    if (clip.draft.trim.end < video.duration) video.currentTime = clip.draft.trim.end;
+  }
+  drawFrame();
+}
+video.addEventListener("timeupdate", updatePlayback);
 if (video.requestVideoFrameCallback) {
-  const update = () => { if (!video.paused) drawFrame(); video.requestVideoFrameCallback(update); };
+  const update = () => { if (!video.paused) updatePlayback(); video.requestVideoFrameCallback(update); };
   video.requestVideoFrameCallback(update);
 }
 timeline.oninput = () => { if (mediaSource) video.currentTime = Number(timeline.value); drawFrame(Number(timeline.value)); };

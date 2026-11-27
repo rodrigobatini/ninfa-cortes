@@ -115,7 +115,7 @@ internal sealed class DesktopWindow : Form
                     loading.Text = "O estúdio não conseguiu carregar. Feche e abra de novo.";
                 }
             };
-            core.Navigate(PortableLauncher.BaseUrl);
+            core.Navigate(PortableLauncher.BaseUrl + "?desktop=local-card");
         }
         catch (WebView2RuntimeNotFoundException)
         {
@@ -140,11 +140,28 @@ internal sealed class DesktopWindow : Form
     {
         if (!IsLocal(e.Source)) return;
         var message = e.TryGetWebMessageAsString();
-        if (message == "studio-stopped")
+        if (message == "pick-local-video")
+        {
+            BeginInvoke((Action)PickLocalVideo);
+        }
+        else if (message == "studio-stopped")
         {
             BeginInvoke((Action)delegate { allowClose = true; Close(); });
         }
         else if (message == "studio-stop-failed") closing = false;
+    }
+
+    private void PickLocalVideo()
+    {
+        using (var dialog = new OpenFileDialog {
+            Title = "Escolher vídeo local",
+            Filter = "Arquivos de vídeo|*.mp4;*.mov;*.mkv;*.webm;*.m4v;*.avi;*.mts;*.m2ts",
+            CheckFileExists = true
+        })
+        {
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+                view.CoreWebView2.PostWebMessageAsString("local-video:" + dialog.FileName);
+        }
     }
 
     private void SaveExport(object sender, CoreWebView2DownloadStartingEventArgs e)
