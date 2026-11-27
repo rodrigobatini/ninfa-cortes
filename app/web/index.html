@@ -7,8 +7,8 @@
   <title>Ninfa Cortes</title>
   <link rel="icon" href="/brand/ninfa.png">
   <link rel="preload" href="/brand/lilita.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="/studio.css?v=clip-trim">
-  <script src="/studio.js?v=clip-trim" defer></script>
+  <link rel="stylesheet" href="/studio.css?v=clip-title">
+  <script src="/studio.js?v=clip-title" defer></script>
 </head>
 <body>
   <header class="bar">
@@ -88,6 +88,10 @@
         <button id="tab-card" type="button" aria-controls="card-panel" aria-pressed="false">Card social</button>
       </div>
       <div class="inspector-editor">
+      <div id="clip-name-field" class="clip-name-field" hidden>
+        <label class="field" for="clip-name">Nome do clipe</label>
+        <input id="clip-name" maxlength="120" placeholder="Nome na biblioteca e no arquivo">
+      </div>
       <div id="inspector-content" hidden>
         <label class="field" for="hook">Hook de abertura</label>
         <input id="hook" maxlength="80" placeholder="Texto de abertura">

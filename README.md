@@ -7,7 +7,7 @@ Ninfa Cortes is an open-source portable Windows app for turning YouTube videos i
 1. Download the full **Windows x64 ZIP** from [GitHub Releases](https://github.com/rodrigobatini/ninfa-cortes/releases) and extract the entire folder.
 2. Double-click **Ninfa Cortes.exe**. The desktop window uses the Microsoft Edge WebView2 Runtime.
 3. Paste a YouTube link for a video you have permission to use, or choose **Arquivo local** in the Windows app. Select up to 30 candidate clips. The app transcribes the video in Portuguese and selects segments for review.
-4. Edit the opening hook and caption text, drag the captions into position, and adjust the facecam framing if the app detected a separate camera. Use **Aparar início e fim** below the preview timeline to trim the clip.
+4. Use **Nome do clipe** to name the draft in the library and set the download filename. Edit the opening hook and caption text, drag the captions into position, and adjust the facecam framing if the app detected a separate camera. Use **Aparar início e fim** below the preview timeline to trim the clip.
 5. Select **Exportar MP4**, then **Baixar MP4** to save a 1080 × 1920 video.
 
 Transcription and rendering run locally. You need an internet connection to retrieve YouTube videos. Transcription uses CUDA on a compatible NVIDIA setup and defaults to CPU when CUDA is unavailable. The current desktop interface and transcription workflow are in Brazilian Portuguese.

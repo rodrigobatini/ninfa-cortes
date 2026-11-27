@@ -70,6 +70,8 @@ body {
 .camera-fine { margin-top: 14px; font-size: .85rem; }
 .camera-fine summary { cursor: pointer; }
 .caption-batch { margin-bottom: 12px; font-size: .82rem; white-space: normal; }
+.clip-name-field { margin-bottom: 14px; }
+.viewer h1, .clip-card strong { overflow-wrap: anywhere; }
 .trim-controls { width: min(90%, 600px); margin: 2px auto 0; font-size: .8rem; }
 .trim-controls summary { cursor: pointer; color: var(--text); padding: 5px 0; }
 .trim-controls output { color: var(--muted); margin-left: .45rem; }

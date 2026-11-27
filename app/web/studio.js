@@ -104,6 +104,7 @@ async function selectProject(key) {
   video.load();
   mediaSource = "";
   $("clip-title").textContent = "Selecione um corte";
+  $("clip-name-field").hidden = true;
   $("inspector-content").hidden = true;
   $("camera-panel").hidden = true;
   $("card-panel").hidden = true;
@@ -166,6 +167,8 @@ async function selectClip(key) {
   video.removeAttribute("src");
   video.load();
   $("clip-title").textContent = item.title;
+  $("clip-name").value = item.title;
+  $("clip-name-field").hidden = false;
   $("hook").value = item.draft.hook;
   $("style").value = item.draft.style;
   $("x").value = item.draft.x;
@@ -611,6 +614,28 @@ $("apply-camera").onclick = async () => {
   finally { button.disabled = false; }
 };
 $("style").onchange = markDirty;
+$("clip-name").onchange = async (event) => {
+  if (!clip) return;
+  const input = event.currentTarget;
+  const { id, title } = clip;
+  const next = input.value.trim();
+  if (!next || next === title) { input.value = title; return; }
+  input.disabled = true;
+  try {
+    const renamed = await api(`clips/${id}/title`, "PATCH", { title: next });
+    const row = clips.find(item => item.id === id);
+    if (row) { row.title = renamed.title; listClips(); }
+    if (clip?.id === id) {
+      clip.title = renamed.title;
+      $("clip-title").textContent = renamed.title;
+      input.value = renamed.title;
+    }
+  } catch (error) {
+    if (clip?.id === id) input.value = title;
+    message(error.message);
+  } finally { input.disabled = false; }
+};
+$("clip-name").onkeydown = (event) => { if (event.key === "Enter") event.currentTarget.blur(); };
 $("hook").oninput = () => { markDirty(); drawFrame(); };
 for (const key of ["x", "y"]) $(key).oninput = () => { setPosition(); markDirty(); };
 $("reset-position").onclick = () => {
