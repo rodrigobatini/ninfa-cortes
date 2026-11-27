@@ -16,6 +16,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 internal sealed class DesktopWindow : Form
 {
+    private bool english;
     private readonly WebView2 view = new WebView2();
     private readonly Label loading = new Label();
     private bool ready;
@@ -28,6 +29,9 @@ internal sealed class DesktopWindow : Form
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr window);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
 
     [STAThread]
     private static void Main()
@@ -140,7 +144,17 @@ internal sealed class DesktopWindow : Form
     {
         if (!IsLocal(e.Source)) return;
         var message = e.TryGetWebMessageAsString();
-        if (message == "pick-local-video")
+        if (message == "language-en-US" || message == "language-pt-BR")
+        {
+            english = message == "language-en-US";
+        }
+        else if (message == "theme-dark" || message == "theme-light")
+        {
+            int dark = message == "theme-dark" ? 1 : 0;
+            if (DwmSetWindowAttribute(Handle, 20, ref dark, sizeof(int)) != 0)
+                DwmSetWindowAttribute(Handle, 19, ref dark, sizeof(int));
+        }
+        else if (message == "pick-local-video")
         {
             BeginInvoke((Action)PickLocalVideo);
         }
@@ -154,8 +168,8 @@ internal sealed class DesktopWindow : Form
     private void PickLocalVideo()
     {
         using (var dialog = new OpenFileDialog {
-            Title = "Escolher vídeo local",
-            Filter = "Arquivos de vídeo|*.mp4;*.mov;*.mkv;*.webm;*.m4v;*.avi;*.mts;*.m2ts",
+            Title = english ? "Choose local video" : "Escolher vídeo local",
+            Filter = (english ? "Video files" : "Arquivos de vídeo") + "|*.mp4;*.mov;*.mkv;*.webm;*.m4v;*.avi;*.mts;*.m2ts",
             CheckFileExists = true
         })
         {
@@ -173,7 +187,8 @@ internal sealed class DesktopWindow : Form
             try
             {
                 using (var dialog = new SaveFileDialog {
-                    Title = "Salvar corte exportado", Filter = "Vídeo MP4 (*.mp4)|*.mp4",
+                    Title = english ? "Save exported clip" : "Salvar corte exportado",
+                    Filter = english ? "MP4 video (*.mp4)|*.mp4" : "Vídeo MP4 (*.mp4)|*.mp4",
                     FileName = Path.GetFileName(e.ResultFilePath), AddExtension = true, DefaultExt = "mp4"
                 })
                 {

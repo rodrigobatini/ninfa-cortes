@@ -10,7 +10,7 @@ Ninfa Cortes is an open-source portable Windows app for turning YouTube videos i
 4. Use **Nome do clipe** to name the draft in the library and set the download filename. Edit the opening hook and caption text, drag the captions into position, and adjust the facecam framing if the app detected a separate camera. Use **Aparar início e fim** below the preview timeline to trim the clip.
 5. Select **Exportar MP4**, then **Baixar MP4** to save a 1080 × 1920 video.
 
-Transcription and rendering run locally. You need an internet connection to retrieve YouTube videos. Transcription uses CUDA on a compatible NVIDIA setup and defaults to CPU when CUDA is unavailable. The current desktop interface and transcription workflow are in Brazilian Portuguese.
+Transcription and rendering run locally. You need an internet connection to retrieve YouTube videos. Transcription uses CUDA on a compatible NVIDIA setup and defaults to CPU when CUDA is unavailable. Use the language selector in the header for Brazilian Portuguese or US English. Automatic transcription uses Brazilian Portuguese.
 
 The **Card social** tab lets you add a static PNG, JPG, or WebP image that stays visible for the entire clip. Adjust its size, drag it in the preview, and optionally copy it to the other clips from the same source or save it as the default for newly generated clips. The remove buttons in the library hide individual clips or an entire source from the editor and keep the original video and exported files on disk. Keep locally selected source videos at their original paths while editing.
 

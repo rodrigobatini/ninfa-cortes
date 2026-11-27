@@ -57,7 +57,8 @@ body {
 }
 .card-preview.is-editing { pointer-events: auto; cursor: grab; touch-action: none; }
 .card-preview.is-editing:active { cursor: grabbing; }
-.card-file, #card-controls input { width: 100%; }
+#card-controls input { width: 100%; }
+#pick-card-image { font-size: .82rem; }
 #card-controls button, #clear-default-card { display: block; margin-top: 9px; font-size: .82rem; white-space: normal; }
 .project-select { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
 .project-select select { min-width: 0; flex: 1; }
@@ -72,6 +73,37 @@ body {
 .caption-batch { margin-bottom: 12px; font-size: .82rem; white-space: normal; }
 .clip-name-field { margin-bottom: 14px; }
 .viewer h1, .clip-card strong { overflow-wrap: anywhere; }
+.window-actions { display: flex; align-items: center; justify-self: end; gap: 8px; }
+#language { font-size: .8rem; min-height: 38px; padding-left: .55rem; }
+#toggle-theme { display: grid; place-items: center; width: 38px; height: 38px; padding: 0; font-size: 1.15rem; line-height: 1; }
+#toggle-theme:hover { background: var(--view); }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #211d2b;
+  --panel: #262232;
+  --view: #191622;
+  --input: #302b3c;
+  --line: #f7eee72b;
+  --text: #f7eee7;
+  --muted: #cdc1d0;
+  --rose: #eab5c7;
+  --rose-ink: #ffb9cf;
+  --rose-wash: #3d293d;
+  --blue: #aac4ff;
+  --green: #a9e0bd;
+}
+[data-theme="dark"] .secondary { border-color: #ebdbea57; }
+[data-theme="dark"] .primary { background: #a64566; }
+[data-theme="dark"] .primary:hover:not(:disabled) { background: #b44c71; }
+[data-theme="dark"] select {
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+}
+[data-theme="dark"] ::selection { color: #211d2b; }
+@media (max-width: 740px) {
+  .window-actions { grid-column: 2; grid-row: 1; }
+}
 .trim-controls { width: min(90%, 600px); margin: 2px auto 0; font-size: .8rem; }
 .trim-controls summary { cursor: pointer; color: var(--text); padding: 5px 0; }
 .trim-controls output { color: var(--muted); margin-left: .45rem; }
