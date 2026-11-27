@@ -161,6 +161,10 @@ class TrimEdit(BaseModel):
     end: float = Field(gt=0, allow_inf_nan=False)
 
 
+class ClipTitleEdit(BaseModel):
+    title: str = Field(max_length=120)
+
+
 class DraftEdit(BaseModel):
     revision: int = Field(ge=0)
     hook: str = Field(max_length=80)
@@ -460,6 +464,19 @@ def read_clip(key: str):
             "default_card": default_card()}
 
 
+@app.patch("/api/clips/{key}/title")
+def rename_clip(key: str, body: ClipTitleEdit):
+    title = " ".join(body.title.split())
+    if not title:
+        raise HTTPException(400, "Digite um nome para o clipe.")
+    with CLIP_LOCK:
+        clip = get("clip", key)
+        if clip["title"] != title:
+            clip["title"] = title
+            put("clip", clip)
+    return {"id": key, "title": title}
+
+
 def caption_events_for(clip):
     draft = clip["draft"]
     start, end = editor.trim_range(clip, draft)
@@ -637,7 +654,7 @@ def send_media(key: str, mode: str, download: bool = False):
         raise HTTPException(404, "O vídeo ainda não está pronto.")
     if mode == "export" and clip.get("export_revision") != clip["draft"]["revision"]:
         raise HTTPException(409, "Exporte novamente para incluir as alterações do rascunho.")
-    filename = f"{clip['order']:02}-{cl_common.slug(clip['title'])}.mp4" if download else None
+    filename = f"{clip['order']:02}-{cl_common.slug(clip['title']) or 'corte'}.mp4" if download else None
     return FileResponse(file, media_type="video/mp4", filename=filename, headers={"Cache-Control": "no-store"})
 
 
