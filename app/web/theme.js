@@ -13,7 +13,7 @@
     const button = document.getElementById("toggle-theme");
     if (!button) return;
     button.setAttribute("aria-pressed", String(dark));
-    button.title = dark ? "Usar tema claro" : "Usar tema escuro";
+    button.title = t(dark ? "Usar tema claro" : "Usar tema escuro");
     button.firstElementChild.textContent = dark ? "☀" : "☾";
     window.chrome?.webview?.postMessage(dark ? "theme-dark" : "theme-light");
   }

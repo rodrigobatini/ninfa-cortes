@@ -8,6 +8,7 @@ let localVideo = null;
 let jobs = [], clips = [], currentJob = null, clip = null, events = [];
 let stopped = false;
 let dirty = false, saving = null, saveTimer = null, warningTimer = null;
+let renameTask = null;
 let revision = 0, editVersion = 0, selectedRequest = 0, mediaSource = "", activeCue = -1;
 let activeTab = "captions", cameraTimer = null, cameraRequest = 0;
 const cameraDefaults = { horizontal: 0, vertical: 0, zoom: 100, pan_x: 0, pan_y: 0 };
@@ -19,13 +20,13 @@ async function api(path, method = "GET", body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const json = await response.json();
-  if (!response.ok) throw new Error(typeof json.detail === "string" ? json.detail : "Confira os campos e tente novamente.");
+  if (!response.ok) throw new Error(typeof json.detail === "string" ? json.detail : t("Confira os campos e tente novamente."));
   return json;
 }
 
 function message(text) {
   const notice = $("notice");
-  notice.textContent = text;
+  notice.textContent = t(text);
   notice.hidden = !text;
   clearTimeout(warningTimer);
   if (text) warningTimer = setTimeout(() => { notice.hidden = true; }, 7000);
@@ -39,7 +40,7 @@ function time(seconds) {
 }
 
 function listProjects() {
-  $("projects").replaceChildren(...jobs.map(job => new Option(job.title, job.id)));
+  $("projects").replaceChildren(...jobs.map(job => new Option(job.status === "queued" && job.title === "Novo vídeo" ? t(job.title) : job.title, job.id)));
   if (currentJob) $("projects").value = currentJob;
   const job = jobs.find(row => row.id === currentJob);
   $("remove-project").hidden = !job;
@@ -48,12 +49,12 @@ function listProjects() {
   if (job) {
     $("progress").value = job.progress;
     $("progress").hidden = job.status === "error";
-    $("job-message").textContent = job.message;
+    $("job-message").textContent = progressText(job.message);
   }
 }
 
 function listClips() {
-  $("clip-count").textContent = clips.length ? `${clips.length} ${clips.length === 1 ? "corte" : "cortes"}` : "";
+  $("clip-count").textContent = clips.length ? clipCount(clips.length) : "";
   const cards = clips.map(item => {
     const button = document.createElement("button");
     button.type = "button";
@@ -77,8 +78,8 @@ function listClips() {
     remove.type = "button";
     remove.className = "icon-remove";
     remove.textContent = "×";
-    remove.title = "Remover corte";
-    remove.setAttribute("aria-label", `Remover corte: ${item.title}`);
+    remove.title = t("Remover corte");
+    remove.setAttribute("aria-label", t("Remover corte: {title}", { title: item.title }));
     remove.onclick = () => removeClip(item).catch(error => message(error.message));
     row.append(button, remove);
     return row;
@@ -87,14 +88,14 @@ function listClips() {
     const empty = document.createElement("p");
     empty.className = "empty";
     const job = jobs.find(row => row.id === currentJob);
-    empty.textContent = !job ? "Escolha um vídeo para começar." :
-      job.status === "ready" ? "Nenhum corte nesta lista." : "Os cortes aparecem assim que estiverem prontos.";
+    empty.textContent = t(!job ? "Escolha um vídeo para começar." :
+      job.status === "ready" ? "Nenhum corte nesta lista." : "Os cortes aparecem assim que estiverem prontos.");
     cards.push(empty);
   }
   $("clip-list").replaceChildren(...cards);
 }
 
-async function selectProject(key) {
+async function selectProject(key, preferredClip = null) {
   await flush();
   currentJob = key;
   clip = null;
@@ -103,7 +104,7 @@ async function selectProject(key) {
   video.removeAttribute("src");
   video.load();
   mediaSource = "";
-  $("clip-title").textContent = "Selecione um corte";
+  $("clip-title").textContent = t("Selecione um corte");
   $("clip-name-field").hidden = true;
   $("inspector-content").hidden = true;
   $("camera-panel").hidden = true;
@@ -122,11 +123,11 @@ async function selectProject(key) {
   listProjects();
   clips = key ? await api(`jobs/${key}/clips`) : [];
   listClips();
-  if (clips.length) await selectClip(clips[0].id);
+  if (clips.length) await selectClip(clips.find(item => item.id === preferredClip)?.id ?? clips[0].id);
 }
 
 async function removeClip(item) {
-  if (!confirm(`Remover o corte “${item.title}” da lista?`)) return;
+  if (!confirm(t("Remover o corte “{title}” da lista?", { title: item.title }))) return;
   await flush();
   const project = currentJob;
   await api(`clips/${item.id}`, "DELETE");
@@ -140,7 +141,7 @@ async function removeClip(item) {
 
 $("remove-project").onclick = async () => {
   const job = jobs.find(row => row.id === currentJob);
-  if (!job || !confirm(`Remover “${job.title}” e seus cortes da biblioteca? Os arquivos originais ficam no computador.`)) return;
+  if (!job || !confirm(t("Remover “{title}” e seus cortes da biblioteca? Os arquivos originais ficam no computador.", { title: job.title }))) return;
   try {
     await flush();
     await api(`jobs/${job.id}`, "DELETE");
@@ -205,14 +206,14 @@ async function selectClip(key) {
 }
 
 function showCues() {
-  $("cue-count").textContent = `${clip.draft.cues.length} trechos`;
+  $("cue-count").textContent = t("{n} trechos", { n: clip.draft.cues.length });
   $("cue-list").replaceChildren(...clip.draft.cues.map((cue, index) => {
     const row = document.createElement("div");
     row.className = "cue";
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = time(cue.start);
-    button.title = `Ir para ${time(cue.start)}`;
+    button.title = t("Ir para {time}", { time: time(cue.start) });
     button.onclick = () => {
       video.pause();
       if (mediaSource) video.currentTime = cue.start + .02;
@@ -224,7 +225,7 @@ function showCues() {
     input.rows = 1;
     input.maxLength = 150;
     input.value = cue.text;
-    input.setAttribute("aria-label", `Legenda ${index + 1}, em ${time(cue.start)}`);
+    input.setAttribute("aria-label", t("Legenda {n}, em {time}", { n: index + 1, time: time(cue.start) }));
     input.oninput = () => {
       cue.text = input.value;
       markDirty();
@@ -239,7 +240,7 @@ function showCues() {
 }
 
 function setVideoStatus(text) {
-  $("video-status").textContent = text;
+  $("video-status").textContent = t(text);
   $("video-status").hidden = !text;
 }
 
@@ -266,9 +267,9 @@ function updateMedia(item) {
       try { updateMedia(await api(`clips/${clip.id}/preview`, "POST")); } catch (error) { message(error.message); }
     };
   }
-  if (clip.export === "error") $("export").title = clip.export_error || "Tente exportar novamente";
+  $("export").title = clip.export === "error" ? t(clip.export_error || "Tente exportar novamente") : "";
   $("export").disabled = clip.export === "working";
-  $("export").textContent = clip.export === "working" ? "Exportando…" : "Exportar MP4";
+  $("export").textContent = t(clip.export === "working" ? "Exportando…" : "Exportar MP4");
   const ready = clip.export === "ready" && clip.export_revision === revision && !dirty;
   $("download").hidden = !ready;
   if (ready) $("download").href = `/api/clips/${clip.id}/media/export?download=true`;
@@ -285,7 +286,7 @@ function cameraStatus() {
   if (!clip) return;
   const stale = clip.preview_camera_revision !== clip.draft.camera_revision;
   $("refresh-camera").disabled = clip.preview === "working" || (!stale && clip.preview === "ready");
-  $("refresh-camera").textContent = clip.preview === "working" ? "Atualizando…" : "Atualizar prévia";
+  $("refresh-camera").textContent = t(clip.preview === "working" ? "Atualizando…" : "Atualizar prévia");
 }
 
 function hideCameraFrame() {
@@ -325,8 +326,8 @@ function setEditTab(tab) {
   $("camera-panel").hidden = !camera || !clip;
   $("card-panel").hidden = tab !== "card" || !clip;
   cardPreview.classList.toggle("is-editing", tab === "card");
-  $("viewer-hint").textContent = camera ? "Pause o vídeo e arraste a facecam" :
-    tab === "card" ? "Arraste o card na prévia" : "Arraste a legenda na prévia";
+  $("viewer-hint").textContent = t(camera ? "Pause o vídeo e arraste a facecam" :
+    tab === "card" ? "Arraste o card na prévia" : "Arraste a legenda na prévia");
   const ranges = clip?.camera_ranges || [];
   $("camera-controls").hidden = ranges.length === 0;
   $("camera-unavailable").hidden = ranges.length > 0;
@@ -365,18 +366,18 @@ function setPosition() {
   caption.style.top = `${$("y").value}%`;
 }
 
-function drawFrame(t = video.currentTime || 0, override = null) {
+function drawFrame(at = video.currentTime || 0, override = null) {
   if (!clip) return;
   $("current").textContent = $("trim-controls").open ?
-    `${time(t)},${String(Math.floor((t % 1) * 100)).padStart(2, "0")}` : time(t);
-  timeline.value = t;
+    `${time(at)}${english ? "." : ","}${String(Math.floor((at % 1) * 100)).padStart(2, "0")}` : time(at);
+  timeline.value = at;
   const hook = $("hook-preview");
   const { start, end } = clip.draft.trim;
-  const selected = t >= start && t < end;
+  const selected = at >= start && at < end;
   hook.textContent = $("hook").value;
-  hook.hidden = !selected || t >= start + 2.6 || !hook.textContent;
-  const e = selected && events.find(hit => hit.start <= t && hit.end > t);
-  const cueIndex = clip.draft.cues.findIndex(c => c.start <= t && c.end > t);
+  hook.hidden = !selected || at >= start + 2.6 || !hook.textContent;
+  const e = selected && events.find(hit => hit.start <= at && hit.end > at);
+  const cueIndex = clip.draft.cues.findIndex(c => c.start <= at && c.end > at);
   if (cueIndex !== activeCue) {
     $("cue-list").children[activeCue]?.classList.remove("active");
     $("cue-list").children[cueIndex]?.classList.add("active");
@@ -396,14 +397,14 @@ function drawFrame(t = video.currentTime || 0, override = null) {
       if (index === e.active) word.className = "active";
       caption.append(word);
     });
-  } else if (video.paused) caption.textContent = "Posição da legenda";
+  } else if (video.paused) caption.textContent = t("Posição da legenda");
 }
 
 function markDirty() {
   if (!clip) return;
   dirty = true;
   editVersion++;
-  $("save-state").textContent = "Salvando…";
+  $("save-state").textContent = t("Salvando…");
   $("download").hidden = true;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => flush().catch(error => message(error.message)), 360);
@@ -430,13 +431,13 @@ async function saveChanges() {
       if (editVersion === version) {
         dirty = false;
         events = result.events;
-        $("save-state").textContent = "Salvo";
+        $("save-state").textContent = t("Salvo");
         updateMedia(result);
         drawFrame();
       }
     }
   } catch (error) {
-    $("save-state").textContent = "Falha ao salvar";
+    $("save-state").textContent = t("Falha ao salvar");
     throw error;
   }
 }
@@ -448,7 +449,7 @@ function selectLocalVideo(path) {
   source.value = path ? path.replaceAll("\\", "/").split("/").at(-1) : "";
   source.readOnly = Boolean(path);
   source.required = !path;
-  source.setAttribute("aria-label", path ? "Arquivo local selecionado" : "Link do vídeo no YouTube");
+  source.setAttribute("aria-label", t(path ? "Arquivo local selecionado" : "Link do vídeo no YouTube"));
   $("clear-local").hidden = !path;
   $("pick-local").hidden = !webview || Boolean(path);
 }
@@ -482,12 +483,13 @@ $("projects").onchange = (event) => selectProject(event.target.value).catch(erro
 $("tab-captions").onclick = () => setEditTab("captions");
 $("tab-camera").onclick = () => setEditTab("camera");
 $("tab-card").onclick = () => setEditTab("card");
+$("pick-card-image").onclick = () => $("card-file").click();
 $("card-file").onchange = async (event) => {
   const input = event.currentTarget;
   const file = input.files[0];
   const key = clip?.id;
   if (!file || !key) return;
-  input.disabled = true;
+  $("pick-card-image").disabled = true;
   try {
     const response = await fetch("/api/social-cards", { method: "POST", body: file });
     const image = await response.json();
@@ -500,7 +502,7 @@ $("card-file").onchange = async (event) => {
     drawCard();
     markDirty();
   } catch (error) { message(error.message); }
-  finally { input.value = ""; input.disabled = false; }
+  finally { input.value = ""; $("pick-card-image").disabled = false; }
 };
 for (const key of ["x", "y", "size"]) $("card-" + key).oninput = (event) => {
   if (!clip?.draft.card) return;
@@ -530,11 +532,11 @@ async function applyCard(button, path, method, status) {
   finally { button.disabled = false; }
 }
 $("copy-card").onclick = (event) => applyCard(event.currentTarget, "card-batch", "POST",
-  ({ updated }) => updated ? `Card aplicado a ${updated} corte(s) deste vídeo.` : "Todos os cortes deste vídeo já usam esse card.");
+  ({ updated }) => updated ? t("Card aplicado a {n} deste vídeo.", { n: clipCount(updated) }) : t("Todos os cortes deste vídeo já usam esse card."));
 $("save-default-card").onclick = (event) => applyCard(event.currentTarget, "card-default?enabled=true", "PUT",
-  () => "Os próximos cortes começam com este card.");
+  () => t("Os próximos cortes começam com este card."));
 $("clear-default-card").onclick = (event) => applyCard(event.currentTarget, "card-default?enabled=false", "PUT",
-  () => "Card padrão desativado.");
+  () => t("Card padrão desativado."));
 let cardDrag = null;
 cardPreview.onpointerdown = (event) => {
   if (!clip?.draft.card || activeTab !== "card") return;
@@ -609,14 +611,15 @@ $("apply-camera").onclick = async () => {
   try {
     await flush();
     const result = await api(`clips/${key}/camera-batch`, "POST");
-    if (clip?.id === key) $("camera-status").textContent = result.updated ? `Enquadramento copiado para ${result.updated} ${result.updated === 1 ? "corte" : "cortes"}.` : "Os outros cortes já usam esse ajuste ou não têm facecam separada.";
+    if (clip?.id === key) $("camera-status").textContent = result.updated ?
+      t("Enquadramento copiado para {n}.", { n: clipCount(result.updated) }) :
+      t("Os outros cortes já usam esse ajuste ou não têm facecam separada.");
   } catch (error) { message(error.message); }
   finally { button.disabled = false; }
 };
 $("style").onchange = markDirty;
-$("clip-name").onchange = async (event) => {
+async function renameSelectedClip(input) {
   if (!clip) return;
-  const input = event.currentTarget;
   const { id, title } = clip;
   const next = input.value.trim();
   if (!next || next === title) { input.value = title; return; }
@@ -634,6 +637,9 @@ $("clip-name").onchange = async (event) => {
     if (clip?.id === id) input.value = title;
     message(error.message);
   } finally { input.disabled = false; }
+}
+$("clip-name").onchange = (event) => {
+  renameTask = renameSelectedClip(event.currentTarget).finally(() => { renameTask = null; });
 };
 $("clip-name").onkeydown = (event) => { if (event.key === "Enter") event.currentTarget.blur(); };
 $("hook").oninput = () => { markDirty(); drawFrame(); };
@@ -654,8 +660,8 @@ $("apply-caption-position").onclick = async (event) => {
     const { updated } = await api(`clips/${id}/caption-position-batch`, "POST");
     if (clip?.id !== id) return;
     const status = $("caption-position-status");
-    status.textContent = updated ? `Posição aplicada a ${updated} ${updated === 1 ? "corte" : "cortes"} deste vídeo.` :
-      "Todos os cortes deste vídeo já usam esta posição.";
+    status.textContent = updated ? t("Posição aplicada a {n} deste vídeo.", { n: clipCount(updated) }) :
+      t("Todos os cortes deste vídeo já usam esta posição.");
     status.hidden = false;
   } catch (error) { message(error.message); }
   finally { button.disabled = false; }
@@ -690,7 +696,7 @@ function showTrim() {
   $("trim-end").value = end;
   $("trim-start").max = clip.duration;
   $("trim-end").max = clip.duration;
-  $("trim-length").value = `${(end - start).toFixed(2).replace(".", ",")} s`;
+  $("trim-length").value = `${(end - start).toLocaleString(document.documentElement.lang, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} s`;
 }
 
 function setTrim(start, end) {
@@ -741,8 +747,8 @@ async function play() {
 }
 $("play").onclick = $("play-screen").onclick = play;
 video.onclick = play;
-video.addEventListener("play", () => { hideCameraFrame(); $("play").textContent = "Ⅱ"; $("play").ariaLabel = "Pausar"; $("play-screen").hidden = true; drawFrame(); });
-video.addEventListener("pause", () => { $("play").textContent = "▶"; $("play").ariaLabel = "Reproduzir"; drawFrame(); drawCameraFrame(); });
+video.addEventListener("play", () => { hideCameraFrame(); $("play").textContent = "Ⅱ"; $("play").ariaLabel = t("Pausar"); $("play-screen").hidden = true; drawFrame(); });
+video.addEventListener("pause", () => { $("play").textContent = "▶"; $("play").ariaLabel = t("Reproduzir"); drawFrame(); drawCameraFrame(); });
 video.addEventListener("seeked", () => { drawFrame(); drawCameraFrame(); });
 function updatePlayback() {
   if (clip && !video.paused && video.currentTime >= clip.draft.trim.end) {
@@ -816,9 +822,49 @@ async function poll() {
   finally { polling = false; }
 }
 
+const languageSelect = $("language");
+languageSelect.value = english ? "en-US" : "pt-BR";
+webview?.postMessage("language-" + languageSelect.value);
+languageSelect.onchange = async () => {
+  const chosen = languageSelect.value;
+  languageSelect.disabled = true;
+  try {
+    if (renameTask) await renameTask;
+    await flush();
+    sessionStorage.setItem("ninfa-language-view", JSON.stringify({
+      job: currentJob, clip: clip?.id, tab: activeTab, at: Number(timeline.value),
+      input: $("source-url").value, path: localVideo, count: $("count").value,
+    }));
+    localStorage.setItem(languageKey, chosen);
+    location.reload();
+  } catch (error) {
+    languageSelect.value = english ? "en-US" : "pt-BR";
+    languageSelect.disabled = false;
+    message(error.message);
+  }
+};
+
 async function start() {
+  let resume;
+  try {
+    resume = JSON.parse(sessionStorage.getItem("ninfa-language-view"));
+    sessionStorage.removeItem("ninfa-language-view");
+  } catch { /* Open normally when the previous view is unavailable. */ }
+  if (resume?.tab) activeTab = resume.tab;
   jobs = await api("jobs");
-  await selectProject(jobs[0]?.id || null);
+  await selectProject(jobs.find(job => job.id === resume?.job)?.id ?? jobs[0]?.id ?? null, resume?.clip);
+  if (resume) {
+    if (resume.path) selectLocalVideo(resume.path);
+    else $("source-url").value = resume.input;
+    $("count").value = resume.count;
+    if (clip?.id === resume.clip && resume.at) {
+      timeline.value = resume.at;
+      if (video.readyState) video.currentTime = Math.min(resume.at, video.duration);
+      else video.addEventListener("loadedmetadata", () => {
+        if (clip?.id === resume.clip) video.currentTime = Math.min(resume.at, video.duration);
+      }, { once: true });
+    }
+  }
   setInterval(poll, 1400);
 }
 start().catch(error => message(error.message));

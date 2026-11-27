@@ -57,7 +57,8 @@ body {
 }
 .card-preview.is-editing { pointer-events: auto; cursor: grab; touch-action: none; }
 .card-preview.is-editing:active { cursor: grabbing; }
-.card-file, #card-controls input { width: 100%; }
+#card-controls input { width: 100%; }
+#pick-card-image { font-size: .82rem; }
 #card-controls button, #clear-default-card { display: block; margin-top: 9px; font-size: .82rem; white-space: normal; }
 .project-select { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
 .project-select select { min-width: 0; flex: 1; }
@@ -73,6 +74,7 @@ body {
 .clip-name-field { margin-bottom: 14px; }
 .viewer h1, .clip-card strong { overflow-wrap: anywhere; }
 .window-actions { display: flex; align-items: center; justify-self: end; gap: 8px; }
+#language { font-size: .8rem; min-height: 38px; padding-left: .55rem; }
 #toggle-theme { display: grid; place-items: center; width: 38px; height: 38px; padding: 0; font-size: 1.15rem; line-height: 1; }
 #toggle-theme:hover { background: var(--view); }
 :root[data-theme="dark"] {
